@@ -1,9 +1,9 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='dg_util',
     version='1.0',
-    packages=['python'],
+    packages=find_packages(),
     url='',
     license='',
     author='Daniel Gordon',
