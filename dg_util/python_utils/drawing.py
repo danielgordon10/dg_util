@@ -1,5 +1,4 @@
-import string
-
+from . import misc_util
 import numpy as np
 import cv2
 
@@ -78,25 +77,8 @@ def subplot(
                         im = im.astype(np.uint8)
                 if len(im.shape) < 3:
                     im = cv2.applyColorMap(im, cv2.COLORMAP_JET)[:, :, ::-1]
-                if im.shape != (output_height, output_width, 3):
-                    im_width = im.shape[1] * output_height / im.shape[0]
-                    if im_width > output_width:
-                        im_width = output_width
-                        im_height = im.shape[0] * output_width / im.shape[1]
-                    else:
-                        im_width = im.shape[1] * output_height / im.shape[0]
-                        im_height = output_height
-                    im_width = int(im_width)
-                    im_height = int(im_height)
-                    im = cv2.resize(im, (im_width, im_height), interpolation=cv2.INTER_NEAREST)
-                    if im_width != output_width:
-                        pad0 = int(np.floor((output_width - im_width) * 1.0 / 2))
-                        pad1 = int(np.ceil((output_width - im_width) * 1.0 / 2))
-                        im = np.lib.pad(im, ((0, 0), (pad0, pad1), (0, 0)), "constant", constant_values=0)
-                    elif im_height != output_height:
-                        pad0 = int(np.floor((output_height - im_height) * 1.0 / 2))
-                        pad1 = int(np.ceil((output_height - im_height) * 1.0 / 2))
-                        im = np.lib.pad(im, ((pad0, pad1), (0, 0), (0, 0)), "constant", constant_values=0)
+
+                im = misc_util.min_side_resize_and_pad(im, output_height, output_width)
                 if (
                     titles is not None
                     and len(titles) > 1
