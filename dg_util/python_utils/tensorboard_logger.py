@@ -1,8 +1,10 @@
 import os
+import tempfile
 
 import numpy as np
 import scipy.misc
 import tensorflow as tf
+from torchviz import make_dot
 
 try:
     from StringIO import StringIO  # Python 2.7
@@ -95,6 +97,13 @@ class Logger(object):
         summary = tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)])
         self.writer.add_summary(summary, step, increment_counter)
 
+    def network_graph_summary(self, final_layer, named_parameters, step):
+        dot = make_dot(final_layer, named_parameters)
+        path = tempfile.mktemp('.gv')
+        dot.render(path, format='png')
+        image = scipy.misc.imread(path + '.png')[:, :, :3]
+        self.image_summary('network', image, step, False)
+
     def network_conv_summary(self, network, step):
         for ii, (name, val) in enumerate(network.state_dict().items()):
             val = val.detach().cpu().numpy()
@@ -137,6 +146,11 @@ class Logger(object):
     def image_summary(self, tag, images, step, increment_counter):
         """Log a list of images."""
 
+        if isinstance(images, np.ndarray):
+            if len(images.shape) == 3:
+                images = [images]
+            elif len(images.shape) == 2:
+                images = [np.tile(images[:, :, np.newaxis], (1, 1, 3))]
         img_summaries = []
         for i, img in enumerate(images):
             # Write the image to a string

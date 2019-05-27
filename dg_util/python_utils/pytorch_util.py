@@ -92,19 +92,25 @@ def restore(net, save_file, saved_variable_prefix="", new_variable_prefix="", sk
         traceback.print_exc()
 
 
+def get_checkpoint_ind(filename):
+    try:
+        nums = re.findall(r"\d+", filename)
+        start_it = int(nums[-1])
+    except:
+        start_it = 0
+        print('Could not parse epoch')
+    return start_it
+
+
 def restore_from_folder(net, folder, saved_variable_prefix="", new_variable_prefix="", skip_filter=None):
     print("restoring from", folder)
-    checkpoints = sorted(glob.glob(folder + "/*.pt"), key=os.path.getmtime)
+    checkpoints = sorted(glob.glob(os.path.join(folder, "*.pt")), key=os.path.getmtime)
     start_it = 0
-    try:
-        if len(checkpoints) > 0:
-            restore(net, checkpoints[-1], saved_variable_prefix, new_variable_prefix, skip_filter)
-            nums = re.findall(r"\d+", checkpoints[-1])
-            start_it = int(nums[-1])
-        else:
-            print("No checkpoints found")
-    except Exception as ex:
-        print("could not parse epoch, assuming 0")
+    if len(checkpoints) > 0:
+        restore(net, checkpoints[-1], saved_variable_prefix, new_variable_prefix, skip_filter)
+        start_it = get_checkpoint_ind(checkpoints[-1])
+    else:
+        print("No checkpoints found")
     return start_it
 
 
@@ -115,7 +121,7 @@ def save(net, file_name, num_to_keep=1, iteration=None):
         os.makedirs(os.path.dirname(file_name))
     torch.save(net.state_dict(), file_name)
     folder = os.path.dirname(file_name)
-    checkpoints = sorted(glob.glob(folder + "/*.pt"), key=os.path.getmtime)
+    checkpoints = sorted(glob.glob(os.path.join(folder, "*.pt")), key=os.path.getmtime)
     print("Saved %s" % file_name)
     if num_to_keep > 0:
         for ff in checkpoints[:-num_to_keep]:
