@@ -2,6 +2,7 @@ import glob
 import numbers
 import os
 import re
+import traceback
 from collections import defaultdict, OrderedDict
 
 import numpy as np
@@ -97,6 +98,7 @@ def get_checkpoint_ind(filename):
         nums = re.findall(r"\d+", filename)
         start_it = int(nums[-1])
     except:
+        traceback.print_exc()
         start_it = 0
         print('Could not parse epoch')
     return start_it
@@ -174,7 +176,10 @@ def remove_dim(input_tensor, dim):
         for ax in sorted(dim, reverse=True):
             curr_shape = remove_dim_get_shape(curr_shape, ax)
         new_shape = curr_shape
-    return input_tensor.view(new_shape)
+    if isinstance(input_tensor, torch.Tensor):
+        return input_tensor.view(new_shape)
+    else:
+        return input_tensor.reshape(new_shape)
 
 
 class RemoveDim(nn.Module):
