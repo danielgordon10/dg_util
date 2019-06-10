@@ -161,7 +161,7 @@ class Logger(object):
         img_summaries = []
         for i, img in enumerate(images):
             # Write the image to a string
-            img = misc_util.max_resize(img, max_size)
+            img = misc_util.max_resize(img, max_size, interpolation=cv2.INTER_NEAREST)
             s = StringIO()
             scipy.misc.toimage(img).save(s, format="png")
 

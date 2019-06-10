@@ -21,29 +21,29 @@ def resize(image, width_height_tuple, interpolation=cv2.INTER_LINEAR):
     return image
 
 
-def min_resize(img, size):
+def min_resize(img, size, interpolation=cv2.INTER_LINEAR):
     """
     Resize an image so that it is size along the minimum spatial dimension.
     """
     h, w = map(float, img.shape[:2])
     if min([h, w]) != size:
         if h <= w:
-            img = resize(img, (int(round((w / h) * size)), int(size)))
+            img = resize(img, (int(round((w / h) * size)), int(size)), interpolation)
         else:
-            img = resize(img, (int(size), int(round((h / w) * size))))
+            img = resize(img, (int(size), int(round((h / w) * size))), interpolation)
     return img
 
 
-def max_resize(img, size):
+def max_resize(img, size, interpolation=cv2.INTER_LINEAR):
     """
     Resize an image so that it is size along the maximum spatial dimension.
     """
     h, w = map(float, img.shape[:2])
     if max([h, w]) != size:
         if h >= w:
-            img = resize(img, (int(round((w / h) * size)), int(size)))
+            img = resize(img, (int(round((w / h) * size)), int(size)), interpolation)
         else:
-            img = resize(img, (int(size), int(round((h / w) * size))))
+            img = resize(img, (int(size), int(round((h / w) * size))), interpolation)
     return img
 
 
