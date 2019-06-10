@@ -34,6 +34,19 @@ def min_resize(img, size):
     return img
 
 
+def max_resize(img, size):
+    """
+    Resize an image so that it is size along the minimum spatial dimension.
+    """
+    h, w = map(float, img.shape[:2])
+    if max([h, w]) != size:
+        if h >= w:
+            img = resize(img, (int(size), int(round((w / h) * size))))
+        else:
+            img = resize(img, (int(round((h / w) * size)), int(size)))
+    return img
+
+
 def min_side_resize_and_pad(im, output_height, output_width, interpolation=cv2.INTER_NEAREST):
     if im.shape[:2] != (output_height, output_width):
         im_width = im.shape[1] * output_height / im.shape[0]

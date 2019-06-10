@@ -150,7 +150,7 @@ class Logger(object):
             summary_image = kernel_to_image(var[:, :3, :, :])[np.newaxis, ...]
             self.image_summary(scope, summary_image, step, increment_counter)
 
-    def image_summary(self, tag, images, step, increment_counter):
+    def image_summary(self, tag, images, step, increment_counter, max_size=1000):
         """Log a list of images."""
 
         if isinstance(images, np.ndarray):
@@ -161,6 +161,7 @@ class Logger(object):
         img_summaries = []
         for i, img in enumerate(images):
             # Write the image to a string
+            img = misc_util.max_resize(img, max_size)
             s = StringIO()
             scipy.misc.toimage(img).save(s, format="png")
 
