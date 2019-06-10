@@ -4,7 +4,6 @@ import re
 import shlex
 import subprocess
 import tempfile
-from invoke import task
 
 
 def pci_records():
