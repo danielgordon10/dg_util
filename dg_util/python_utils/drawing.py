@@ -194,4 +194,3 @@ def draw_probability_hist(pi):
         ] = (ii + 1)
     p_hist = np.flipud(p_hist)
     return p_hist
-

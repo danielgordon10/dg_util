@@ -100,7 +100,7 @@ def get_checkpoint_ind(filename):
     except:
         traceback.print_exc()
         start_it = 0
-        print('Could not parse epoch')
+        print("Could not parse epoch")
     return start_it
 
 

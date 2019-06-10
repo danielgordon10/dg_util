@@ -1,15 +1,16 @@
 from setuptools import setup, find_packages
-with open('requirements.txt') as f:
+
+with open("requirements.txt") as f:
     requirements = f.read().splitlines()
 
 setup(
-    name='dg_util',
-    version='1.0.1',
+    name="dg_util",
+    version="1.0.2",
     packages=find_packages(),
     install_requires=requirements,
-    url='',
-    license='',
-    author='Daniel Gordon',
-    author_email='',
-    description=''
+    url="",
+    license="",
+    author="Daniel Gordon",
+    author_email="",
+    description="",
 )

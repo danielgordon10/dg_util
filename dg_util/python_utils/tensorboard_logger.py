@@ -106,10 +106,10 @@ class Logger(object):
 
     def network_graph_summary(self, final_layer, named_parameters, step):
         dot = make_dot(final_layer, named_parameters)
-        path = tempfile.mktemp('.gv')
-        dot.render(path, format='png')
-        image = scipy.misc.imread(path + '.png')[:, :, :3]
-        self.image_summary('network', image, step, False)
+        path = tempfile.mktemp(".gv")
+        dot.render(path, format="png")
+        image = scipy.misc.imread(path + ".png")[:, :, :3]
+        self.image_summary("network", image, step, False)
 
     def network_conv_summary(self, network, step):
         for ii, (name, val) in enumerate(network.state_dict().items()):
@@ -237,12 +237,12 @@ class Logger(object):
         max_width = max(img_res, RADIUS * 2)
         max_height = max(img_res, RADIUS * 2)
 
-        print('Starting TSNE')
+        print("Starting TSNE")
         s_time = time.time()
         model = TSNE(n_components=2, verbose=1, random_state=0)
         f2d = model.fit_transform(features)
-        print('TSNE done.', (time.time() - s_time))
-        print('Starting drawing.')
+        print("TSNE done.", (time.time() - s_time))
+        print("Starting drawing.")
 
         xx = f2d[:, 0]
         yy = f2d[:, 1]
@@ -253,8 +253,8 @@ class Logger(object):
         x_min, x_max = xx.min(), xx.max()
         y_min, y_max = yy.min(), yy.max()
         # Fix the ratios
-        sx = (x_max - x_min)
-        sy = (y_max - y_min)
+        sx = x_max - x_min
+        sy = y_max - y_min
         if sx > sy:
             res_x = sx / float(sy) * res
             res_y = res
@@ -274,11 +274,12 @@ class Logger(object):
             y_idx = np.argmin((y - y_coords) ** 2)
             center = (int(y_idx + h / 2.0), int(x_idx + w / 2.0))
             rr, cc = circle(center[1], center[0], RADIUS)
-            color = cv2.applyColorMap(np.array(int(ii * 255.0 / len(images)), dtype=np.uint8),
-                                      cv2.COLORMAP_JET).squeeze()
+            color = cv2.applyColorMap(
+                np.array(int(ii * 255.0 / len(images)), dtype=np.uint8), cv2.COLORMAP_JET
+            ).squeeze()
             circles[rr, cc, :] = color
 
-            canvas[x_idx:x_idx + w, y_idx:y_idx + h] = image
+            canvas[x_idx : x_idx + w, y_idx : y_idx + h] = image
             im_ind += 1
 
         img_summaries = []

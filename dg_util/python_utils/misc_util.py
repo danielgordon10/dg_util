@@ -12,10 +12,8 @@ def get_time_str():
 def resize(image, width_height_tuple, interpolation=cv2.INTER_LINEAR):
     # Deal with the shitty opencv resize bug
     if image.shape[2] > 512:
-        images = [image[:, :, start:min(start + 512, image.shape[2])]
-                  for start in range(0, image.shape[2], 512)]
-        images = [cv2.resize(image, width_height_tuple, interpolation=interpolation)
-                  for image in images]
+        images = [image[:, :, start : min(start + 512, image.shape[2])] for start in range(0, image.shape[2], 512)]
+        images = [cv2.resize(image, width_height_tuple, interpolation=interpolation) for image in images]
         images = [im if len(im.shape) == 3 else im[:, :, np.newaxis] for im in images]
         image = np.concatenate(images, axis=-1)
     else:
