@@ -28,7 +28,7 @@ def min_resize(img, size):
     h, w = map(float, img.shape[:2])
     if min([h, w]) != size:
         if h <= w:
-            img = resize(img, (int(round((w / h) * size))), int(size))
+            img = resize(img, (int(round((w / h) * size)), int(size)))
         else:
             img = resize(img, (int(size), int(round((h / w) * size))))
     return img
@@ -41,7 +41,7 @@ def max_resize(img, size):
     h, w = map(float, img.shape[:2])
     if max([h, w]) != size:
         if h >= w:
-            img = resize(img, (int(round((w / h) * size))), int(size))
+            img = resize(img, (int(round((w / h) * size)), int(size)))
         else:
             img = resize(img, (int(size), int(round((h / w) * size))))
     return img
