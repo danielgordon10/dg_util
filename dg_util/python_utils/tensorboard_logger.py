@@ -265,7 +265,7 @@ class Logger(object):
             res_y = sy / float(sx) * res
 
         canvas = np.full((int(res_x + max_width), int(res_y + max_height), 3), cval, dtype=np.uint8)
-        circles = np.full(canvas.shape, 255, dtype=np.uint8)
+        #circles = np.full(canvas.shape, 255, dtype=np.uint8)
         x_coords = np.linspace(x_min, x_max, res_x)
         y_coords = np.linspace(y_min, y_max, res_y)
         im_ind = 0
@@ -279,12 +279,21 @@ class Logger(object):
             color = cv2.applyColorMap(
                 np.array(int(ii * 255.0 / len(images)), dtype=np.uint8), cv2.COLORMAP_JET
             ).squeeze()
-            circles[rr, cc, :] = color
+            #circles[rr, cc, :] = color
 
             canvas[x_idx : x_idx + w, y_idx : y_idx + h] = image
             im_ind += 1
 
         img_summaries = []
+        # Write the image to a string
+        s = StringIO()
+        scipy.misc.toimage(canvas).save(s, format="jpeg")
+        # Create an Image object
+        img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(), height=canvas.shape[0], width=canvas.shape[1])
+        # Create a Summary value
+        img_summaries.append(tf.Summary.Value(tag="%s/%d" % (tag, 0), image=img_sum))
+
+        '''
         for ii, img in enumerate([canvas, circles]):
             # Write the image to a string
             s = StringIO()
@@ -293,6 +302,7 @@ class Logger(object):
             img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(), height=img.shape[0], width=img.shape[1])
             # Create a Summary value
             img_summaries.append(tf.Summary.Value(tag="%s/%d" % (tag, ii), image=img_sum))
+        '''
 
         # Create and write Summary
         summary = tf.Summary(value=img_summaries)
