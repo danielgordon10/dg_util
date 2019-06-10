@@ -1,4 +1,5 @@
 import time
+
 import cv2
 import numpy as np
 
@@ -9,7 +10,15 @@ def get_time_str():
     return time_str
 
 
-def resize(image, width_height_tuple, interpolation=cv2.INTER_LINEAR):
+def resize(image, width_height_tuple, interpolation=cv2.INTER_LINEAR, height_channel=0, width_channel=1):
+    start_shape = image.shape
+    if not (height_channel == 0 and width_channel == 1):
+        # Put height and width axes first, keep everything else as it was if possible
+        image = np.moveaxis(image, [height_channel, width_channel], [0, 1])
+        start_shape = image.shape
+
+    image = image.reshape(image.shape[0], image.shape[1], -1)
+
     # Deal with the shitty opencv resize bug
     if image.shape[2] > 512:
         images = [image[:, :, start : min(start + 512, image.shape[2])] for start in range(0, image.shape[2], 512)]
@@ -18,6 +27,10 @@ def resize(image, width_height_tuple, interpolation=cv2.INTER_LINEAR):
         image = np.concatenate(images, axis=-1)
     else:
         image = cv2.resize(image, width_height_tuple, interpolation=interpolation)
+
+    image = image.reshape(width_height_tuple[1], width_height_tuple[0], *start_shape[2:])
+    if not (height_channel == 0 and width_channel == 1):
+        image = np.moveaxis(image, [0, 1], [height_channel, width_channel])
     return image
 
 
