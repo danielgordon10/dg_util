@@ -203,7 +203,7 @@ class Logger(object):
         self.writer.add_summary(summary, step, increment_counter)
         self.writer.flush()
 
-    def tsne_summary(self, tag, features, images, step, increment_counter=True, img_res=64, res=4000, cval=255):
+    def tsne_summary(self, tag, features, images, step, increment_counter=True, img_res=64, res=4000, cval=255, labels=None):
         """
         Embeds images via tsne into a scatter plot.
 
@@ -265,7 +265,9 @@ class Logger(object):
             res_y = sy / float(sx) * res
 
         canvas = np.full((int(res_x + max_width), int(res_y + max_height), 3), cval, dtype=np.uint8)
-        #circles = np.full(canvas.shape, 255, dtype=np.uint8)
+        if labels is not None:
+            circles = np.full(canvas.shape, 255, dtype=np.uint8)
+            label_classes = np.unique(labels)
         x_coords = np.linspace(x_min, x_max, res_x)
         y_coords = np.linspace(y_min, y_max, res_y)
         im_ind = 0
@@ -274,12 +276,16 @@ class Logger(object):
             w, h = image.shape[:2]
             x_idx = np.argmin((x - x_coords) ** 2)
             y_idx = np.argmin((y - y_coords) ** 2)
-            center = (int(y_idx + h / 2.0), int(x_idx + w / 2.0))
-            rr, cc = circle(center[1], center[0], RADIUS)
-            color = cv2.applyColorMap(
-                np.array(int(ii * 255.0 / len(images)), dtype=np.uint8), cv2.COLORMAP_JET
-            ).squeeze()
-            #circles[rr, cc, :] = color
+            if labels is not None:
+                center = (int(y_idx + h / 2.0), int(x_idx + w / 2.0))
+                rr, cc = circle(center[1], center[0], RADIUS)
+                import pdb
+                pdb.set_trace()
+                label = np.where(label_classes == labels[ii])[0]
+                color = cv2.applyColorMap(
+                    np.array(int(label * 255.0 / len(label_classes)), dtype=np.uint8), cv2.COLORMAP_JET
+                ).squeeze()
+                circles[rr, cc, :] = color
 
             canvas[x_idx : x_idx + w, y_idx : y_idx + h] = image
             im_ind += 1
@@ -291,18 +297,13 @@ class Logger(object):
         # Create an Image object
         img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(), height=canvas.shape[0], width=canvas.shape[1])
         # Create a Summary value
-        img_summaries.append(tf.Summary.Value(tag="%s/%d" % (tag, 0), image=img_sum))
+        img_summaries.append(tf.Summary.Value(tag=tag, image=img_sum))
 
-        '''
-        for ii, img in enumerate([canvas, circles]):
-            # Write the image to a string
+        if labels is not None:
             s = StringIO()
-            scipy.misc.toimage(img).save(s, format="jpeg")
-            # Create an Image object
-            img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(), height=img.shape[0], width=img.shape[1])
-            # Create a Summary value
-            img_summaries.append(tf.Summary.Value(tag="%s/%d" % (tag, ii), image=img_sum))
-        '''
+            scipy.misc.toimage(circles).save(s, format="jpeg")
+            img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(), height=circles.shape[0], width=circles.shape[1])
+            img_summaries.append(tf.Summary.Value(tag="%s_labels" % tag, image=img_sum))
 
         # Create and write Summary
         summary = tf.Summary(value=img_summaries)
