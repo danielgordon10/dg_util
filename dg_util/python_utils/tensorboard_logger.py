@@ -203,7 +203,8 @@ class Logger(object):
         self.writer.add_summary(summary, step, increment_counter)
         self.writer.flush()
 
-    def tsne_summary(self, tag, features, images, step, increment_counter=True, img_res=64, res=4000, cval=255, labels=None):
+    def tsne_summary(self, tag, features, images, step, increment_counter=True, img_res=64, res=4000, cval=255,
+                     labels=None):
         """
         Embeds images via tsne into a scatter plot.
 
@@ -279,9 +280,7 @@ class Logger(object):
             if labels is not None:
                 center = (int(y_idx + h / 2.0), int(x_idx + w / 2.0))
                 rr, cc = circle(center[1], center[0], RADIUS)
-                import pdb
-                pdb.set_trace()
-                label = np.where(label_classes == labels[ii])[0]
+                label = np.where(label_classes == labels[ii])[0].item()
                 color = cv2.applyColorMap(
                     np.array(int(label * 255.0 / len(label_classes)), dtype=np.uint8), cv2.COLORMAP_JET
                 ).squeeze()
