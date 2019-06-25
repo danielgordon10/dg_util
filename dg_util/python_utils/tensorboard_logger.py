@@ -18,9 +18,9 @@ except ImportError:
     from io import BytesIO as StringIO  # Python 3.x
 
 try:
-    from sklearn.manifold import TSNE
-except ImportError:
     from tsnecuda import TSNE
+except ImportError:
+    from sklearn.manifold import TSNE
 
 
 def kernel_to_image(data, padsize=1):
@@ -50,7 +50,7 @@ def kernel_to_image(data, padsize=1):
     return (data * 255).astype(np.uint8)
 
 
-class SummaryWriter(tf.summary.FileWriter):
+class SummaryWriter(tf.compat.v1.summary.FileWriter):
     def __init__(self, path):
         if not os.path.exists(path):
             os.makedirs(path)
