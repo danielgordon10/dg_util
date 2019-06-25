@@ -1,15 +1,17 @@
+import multiprocessing
+import os
+import tempfile
 import time
 
 import cv2
+import imageio
 import numpy as np
-import os
-import tempfile
 import tensorflow as tf
+from MulticoreTSNE import MulticoreTSNE as TSNE
+from PIL import Image
 from skimage.draw import circle
 from sklearn.decomposition import PCA
 from torchviz import make_dot
-from PIL import Image
-import imageio
 
 from . import misc_util
 
@@ -17,8 +19,6 @@ try:
     from StringIO import StringIO  # Python 2.7
 except ImportError:
     from io import BytesIO as StringIO  # Python 3.x
-
-from sklearn.manifold import TSNE
 
 
 def kernel_to_image(data, padsize=1):
@@ -248,7 +248,9 @@ class Logger(object):
             pca = PCA(n_components=max_feature_size)
             features = pca.fit_transform(features)
 
-        model = TSNE(n_components=2, verbose=1, random_state=0)
+        model = TSNE(n_components=2, verbose=1, random_state=0,
+                     n_jobs=multiprocessing.cpu_count())
+
         f2d = model.fit_transform(features)
         print("TSNE done.", (time.time() - s_time))
         print("Starting drawing.")
