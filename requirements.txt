@@ -3,3 +3,4 @@ opencv-python>=3.0.0
 torchviz
 scikit-image
 scikit-learn
+Pillow>=4.0.0

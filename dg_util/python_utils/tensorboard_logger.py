@@ -3,12 +3,13 @@ import time
 import cv2
 import numpy as np
 import os
-import scipy.misc
 import tempfile
 import tensorflow as tf
 from skimage.draw import circle
 from sklearn.decomposition import PCA
 from torchviz import make_dot
+from PIL import Image
+import imageio
 
 from . import misc_util
 
@@ -17,10 +18,7 @@ try:
 except ImportError:
     from io import BytesIO as StringIO  # Python 3.x
 
-try:
-    from tsnecuda import TSNE
-except ImportError:
-    from sklearn.manifold import TSNE
+from sklearn.manifold import TSNE
 
 
 def kernel_to_image(data, padsize=1):
@@ -112,7 +110,7 @@ class Logger(object):
         dot = make_dot(final_layer, named_parameters)
         path = tempfile.mktemp(".gv")
         dot.render(path, format="png")
-        image = scipy.misc.imread(path + ".png")[:, :, :3]
+        image = imageio.imread(path + ".png")[:, :, :3]
         self.image_summary("network", image, step, False)
 
     def network_conv_summary(self, network, step):
@@ -168,7 +166,7 @@ class Logger(object):
             if max(img.shape[:2]) > max_size:
                 img = misc_util.max_resize(img, max_size, interpolation=cv2.INTER_NEAREST)
             s = StringIO()
-            scipy.misc.toimage(img).save(s, format="png")
+            Image.fromarray(img).save(s, format="png")
 
             # Create an Image object
             img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(), height=img.shape[0], width=img.shape[1])
@@ -300,7 +298,7 @@ class Logger(object):
         img_summaries = []
         # Write the image to a string
         s = StringIO()
-        scipy.misc.toimage(canvas).save(s, format="jpeg")
+        Image.fromarray(canvas).save(s, format="jpeg")
         # Create an Image object
         img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(), height=canvas.shape[0], width=canvas.shape[1])
         # Create a Summary value
@@ -308,7 +306,7 @@ class Logger(object):
 
         if labels is not None:
             s = StringIO()
-            scipy.misc.toimage(circles).save(s, format="jpeg")
+            Image.fromarray(circles).save(s, format="jpeg")
             img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(), height=circles.shape[0], width=circles.shape[1])
             img_summaries.append(tf.Summary.Value(tag="%s_labels" % tag, image=img_sum))
 
