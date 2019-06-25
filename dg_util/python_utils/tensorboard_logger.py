@@ -1,14 +1,13 @@
-import os
-import tempfile
 import time
 
 import cv2
 import numpy as np
+import os
 import scipy.misc
-import scipy.misc
+import tempfile
 import tensorflow as tf
 from skimage.draw import circle
-from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
 from torchviz import make_dot
 
 from . import misc_util
@@ -17,6 +16,11 @@ try:
     from StringIO import StringIO  # Python 2.7
 except ImportError:
     from io import BytesIO as StringIO  # Python 3.x
+
+try:
+    from sklearn.manifold import TSNE
+except ImportError:
+    from tsnecuda import TSNE
 
 
 def kernel_to_image(data, padsize=1):
@@ -203,8 +207,9 @@ class Logger(object):
         self.writer.add_summary(summary, step, increment_counter)
         self.writer.flush()
 
-    def tsne_summary(self, tag, features, images, step, increment_counter=True, img_res=64, res=4000, cval=255,
-                     labels=None):
+    def tsne_summary(self, tag, features, images, step, increment_counter=True,
+                     img_res=64, res=4000, cval=255, point_radius=20,
+                     max_feature_size=-1, labels=None):
         """
         Embeds images via tsne into a scatter plot.
 
@@ -227,7 +232,6 @@ class Logger(object):
 
         """
         assert len(features.shape) == 2
-        RADIUS = 20
         features = np.array(features, dtype=np.float64)
         _, uniques = misc_util.unique_rows(images.reshape(images.shape[0], -1), return_inverse=True)
         uniques.sort()
@@ -237,11 +241,15 @@ class Logger(object):
         images = misc_util.min_resize(images.transpose(1, 2, 0, 3).reshape(h, w, n * c), img_res)
         images = images.reshape(images.shape[0], images.shape[1], n, c).transpose(2, 0, 1, 3)
 
-        max_width = max(img_res, RADIUS * 2)
-        max_height = max(img_res, RADIUS * 2)
+        max_width = max(img_res, point_radius * 2)
+        max_height = max(img_res, point_radius * 2)
 
         print("Starting TSNE")
         s_time = time.time()
+        if 0 < max_feature_size < features.shape[-1]:
+            pca = PCA(n_components=max_feature_size)
+            features = pca.fit_transform(features)
+
         model = TSNE(n_components=2, verbose=1, random_state=0)
         f2d = model.fit_transform(features)
         print("TSNE done.", (time.time() - s_time))
@@ -279,7 +287,7 @@ class Logger(object):
             y_idx = np.argmin((y - y_coords) ** 2)
             if labels is not None:
                 center = (int(y_idx + h / 2.0), int(x_idx + w / 2.0))
-                rr, cc = circle(center[1], center[0], RADIUS)
+                rr, cc = circle(center[1], center[0], point_radius)
                 label = np.where(label_classes == labels[ii])[0].item()
                 color = cv2.applyColorMap(
                     np.array(int(label * 255.0 / len(label_classes)), dtype=np.uint8), cv2.COLORMAP_JET
