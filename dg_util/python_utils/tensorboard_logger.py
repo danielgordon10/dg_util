@@ -207,7 +207,7 @@ class Logger(object):
 
     def tsne_summary(self, tag, features, images, step, increment_counter=True,
                      img_res=64, res=4000, cval=255, point_radius=20,
-                     max_feature_size=-1, labels=None):
+                     max_feature_size=-1, labels=None, n_threads=0):
         """
         Embeds images via tsne into a scatter plot.
 
@@ -248,8 +248,10 @@ class Logger(object):
             pca = PCA(n_components=max_feature_size)
             features = pca.fit_transform(features)
 
+        if n_threads <= 0:
+            n_threads = multiprocessing.cpu_count()
         model = TSNE(n_components=2, verbose=1, random_state=0,
-                     n_jobs=multiprocessing.cpu_count())
+                     n_jobs=n_threads)
 
         f2d = model.fit_transform(features)
         print("TSNE done.", (time.time() - s_time))
