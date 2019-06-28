@@ -429,8 +429,8 @@ def fix_broadcast(input1, input2):
 def normalize(input_tensor, mean, std):
     mean = from_numpy(mean).to(input_tensor.device, input_tensor.dtype)
     std = from_numpy(std).to(input_tensor.device, input_tensor.dtype)
-    mean = fix_broadcast(input_tensor, mean)
-    std = fix_broadcast(input_tensor, std)
+    input_tensor, mean = fix_broadcast(input_tensor, mean)
+    input_tensor, std = fix_broadcast(input_tensor, std)
     input_tensor = input_tensor - mean
     input_tensor = input_tensor / std
     return input_tensor
@@ -439,8 +439,8 @@ def normalize(input_tensor, mean, std):
 def unnormalize(input_tensor, mean, std):
     mean = from_numpy(mean).to(input_tensor.device, input_tensor.dtype)
     std = from_numpy(std).to(input_tensor.device, input_tensor.dtype)
-    mean = fix_broadcast(input_tensor, mean)
-    std = fix_broadcast(input_tensor, std)
+    input_tensor, mean = fix_broadcast(input_tensor, mean)
+    input_tensor, std = fix_broadcast(input_tensor, std)
     input_tensor = input_tensor * std
     input_tensor = input_tensor + mean
     return input_tensor
