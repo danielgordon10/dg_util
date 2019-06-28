@@ -9,7 +9,11 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-
+from PIL import Image
+try:
+    import accimage
+except ImportError:
+    accimage = None
 
 def restore(net, save_file, saved_variable_prefix="", new_variable_prefix="", skip_filter=None):
     print("restoring from", save_file)
@@ -416,3 +420,93 @@ def normalize(input_tensor, mean, std):
     input_tensor = input_tensor - mean
     input_tensor = input_tensor / std
     return input_tensor
+
+
+def unnormalize(input_tensor, mean, std):
+    mean = from_numpy(mean).to(input_tensor.device, input_tensor.dtype)
+    std = from_numpy(std).to(input_tensor.device, input_tensor.dtype)
+    mean = fix_broadcast(input_tensor, mean)
+    std = fix_broadcast(input_tensor, std)
+    input_tensor = input_tensor * std
+    input_tensor = input_tensor + mean
+    return input_tensor
+
+
+def _is_pil_image(img):
+    if accimage is not None:
+        return isinstance(img, (Image.Image, accimage.Image))
+    else:
+        return isinstance(img, Image.Image)
+
+
+def _is_tensor_image(img):
+    return torch.is_tensor(img) and img.ndimension() == 3
+
+
+def _is_numpy_image(img):
+    return isinstance(img, np.ndarray) and (img.ndim in {2, 3})
+
+
+class ToTensor(object):
+    def __init__(self, transpose=True, scale=None):
+        self.transpose = transpose
+        self.scale = scale
+
+    def __call__(self, pic):
+        """Convert a ``PIL Image`` or ``numpy.ndarray`` to tensor.
+
+        See ``ToTensor`` for more details.
+
+        Args:
+            pic (PIL Image or numpy.ndarray): Image to be converted to tensor.
+
+        Returns:
+            Tensor: Converted image.
+        """
+        if not(_is_pil_image(pic) or _is_numpy_image(pic)):
+            raise TypeError('pic should be PIL Image or ndarray. Got {}'.format(type(pic)))
+
+        if isinstance(pic, np.ndarray):
+            # handle numpy array
+            if pic.ndim == 2:
+                pic = pic[:, :, None]
+
+            if self.transpose:
+                pic = pic.transpose((2, 0, 1))
+            img = torch.from_numpy(pic)
+            if self.scale is not None:
+                return img.float().div(self.scale)
+            return img
+
+        if accimage is not None and isinstance(pic, accimage.Image):
+            nppic = np.zeros([pic.channels, pic.height, pic.width], dtype=np.float32)
+            pic.copyto(nppic)
+            return torch.from_numpy(nppic)
+
+        # handle PIL Image
+        if pic.mode == 'I':
+            img = torch.from_numpy(np.array(pic, np.int32, copy=False))
+        elif pic.mode == 'I;16':
+            img = torch.from_numpy(np.array(pic, np.int16, copy=False))
+        elif pic.mode == 'F':
+            img = torch.from_numpy(np.array(pic, np.float32, copy=False))
+        elif pic.mode == '1':
+            img = 255 * torch.from_numpy(np.array(pic, np.uint8, copy=False))
+        else:
+            img = torch.ByteTensor(torch.ByteStorage.from_buffer(pic.tobytes()))
+        # PIL image mode: L, LA, P, I, F, RGB, YCbCr, RGBA, CMYK
+        if pic.mode == 'YCbCr':
+            nchannel = 3
+        elif pic.mode == 'I;16':
+            nchannel = 1
+        else:
+            nchannel = len(pic.mode)
+        img = img.view(pic.size[1], pic.size[0], nchannel)
+        # put it from HWC to CHW format
+        # yikes, this transpose takes 80% of the loading time/CPU
+        if self.transpose:
+            img = img.permute(2, 0, 1).contiguous()
+        if self.scale is not None:
+            return img.float().div(self.scale)
+        else:
+            return img
