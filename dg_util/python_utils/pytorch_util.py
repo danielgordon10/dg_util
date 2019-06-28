@@ -379,6 +379,8 @@ class DummyScope(nn.Module):
 
 
 def get_data_parallel(module, device_ids):
+    if isinstance(device_ids, str):
+        device_ids = [int(device_id.strip()) for device_id in device_ids.split(",")]
     if device_ids is None or len(device_ids) == 1:
         return DummyScope(module, ["module"])
     else:
