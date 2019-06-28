@@ -13,6 +13,9 @@ def get_time_str():
 
 def resize(image, width_height_tuple, interpolation=cv2.INTER_LINEAR, height_channel=0, width_channel=1):
     start_shape = image.shape
+    if (image.shape[width_channel] == width_height_tuple[0] and
+            image.shape[height_channel] == width_height_tuple[1]):
+        return image
     if not (height_channel == 0 and width_channel == 1):
         # Put height and width axes first, keep everything else as it was if possible
         image = np.moveaxis(image, [height_channel, width_channel], [0, 1])
