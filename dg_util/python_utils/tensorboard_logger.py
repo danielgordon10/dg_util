@@ -205,9 +205,21 @@ class Logger(object):
         self.writer.add_summary(summary, step, increment_counter)
         self.writer.flush()
 
-    def tsne_summary(self, tag, features, images, step, increment_counter=True,
-                     img_res=64, res=4000, cval=255, point_radius=20,
-                     max_feature_size=-1, labels=None, n_threads=0):
+    def tsne_summary(
+        self,
+        tag,
+        features,
+        images,
+        step,
+        increment_counter=True,
+        img_res=64,
+        res=4000,
+        cval=255,
+        point_radius=20,
+        max_feature_size=-1,
+        labels=None,
+        n_threads=0,
+    ):
         """
         Embeds images via tsne into a scatter plot.
 
@@ -250,8 +262,7 @@ class Logger(object):
 
         if n_threads <= 0:
             n_threads = multiprocessing.cpu_count()
-        model = TSNE(n_components=2, verbose=1, random_state=0,
-                     n_jobs=n_threads)
+        model = TSNE(n_components=2, verbose=1, random_state=0, n_jobs=n_threads)
 
         f2d = model.fit_transform(features)
         print("TSNE done.", (time.time() - s_time))
@@ -311,7 +322,9 @@ class Logger(object):
         if labels is not None:
             s = StringIO()
             Image.fromarray(circles).save(s, format="jpeg")
-            img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(), height=circles.shape[0], width=circles.shape[1])
+            img_sum = tf.Summary.Image(
+                encoded_image_string=s.getvalue(), height=circles.shape[0], width=circles.shape[1]
+            )
             img_summaries.append(tf.Summary.Value(tag="%s_labels" % tag, image=img_sum))
 
         # Create and write Summary

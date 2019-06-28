@@ -13,8 +13,7 @@ def get_time_str():
 
 def resize(image, width_height_tuple, interpolation=cv2.INTER_LINEAR, height_channel=0, width_channel=1):
     start_shape = image.shape
-    if (image.shape[width_channel] == width_height_tuple[0] and
-            image.shape[height_channel] == width_height_tuple[1]):
+    if image.shape[width_channel] == width_height_tuple[0] and image.shape[height_channel] == width_height_tuple[1]:
         return image
     if not (height_channel == 0 and width_channel == 1):
         # Put height and width axes first, keep everything else as it was if possible
@@ -114,7 +113,7 @@ def unique_rows(arr, return_index=False, return_inverse=False):
 
 class timeout(object):
     # Taken from https://stackoverflow.com/questions/2281850/timeout-function-if-it-takes-too-long-to-finish
-    def __init__(self, seconds=1, error_message='Timeout'):
+    def __init__(self, seconds=1, error_message="Timeout"):
         self.seconds = seconds
         self.error_message = error_message
 

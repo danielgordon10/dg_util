@@ -12,15 +12,33 @@ from torch.utils.data.dataloader import DataLoader, _DataLoaderIter
 
 
 class PersistentDataLoader(DataLoader):
-    def __init__(self, dataset, batch_size=1, shuffle=False, sampler=None,
-                 batch_sampler=None, num_workers=0, collate_fn=_utils.collate.default_collate,
-                 pin_memory=False, drop_last=False, timeout=0,
-                 worker_init_fn=None):
+    def __init__(
+        self,
+        dataset,
+        batch_size=1,
+        shuffle=False,
+        sampler=None,
+        batch_sampler=None,
+        num_workers=0,
+        collate_fn=_utils.collate.default_collate,
+        pin_memory=False,
+        drop_last=False,
+        timeout=0,
+        worker_init_fn=None,
+    ):
         super(PersistentDataLoader, self).__init__(
-            dataset, batch_size, shuffle, sampler,
-            batch_sampler, num_workers, collate_fn,
-            pin_memory, drop_last, timeout,
-            worker_init_fn)
+            dataset,
+            batch_size,
+            shuffle,
+            sampler,
+            batch_sampler,
+            num_workers,
+            collate_fn,
+            pin_memory,
+            drop_last,
+            timeout,
+            worker_init_fn,
+        )
         self.iterator = PersistentDataLoaderIter(self)
 
     def __iter__(self):
@@ -59,10 +77,17 @@ class PersistentDataLoaderIter(_DataLoaderIter):
                 index_queue.cancel_join_thread()
                 w = multiprocessing.Process(
                     target=_utils.worker._worker_loop,
-                    args=(self.dataset, index_queue,
-                          self.worker_result_queue, self.done_event,
-                          self.collate_fn, base_seed + i,
-                          self.worker_init_fn, i))
+                    args=(
+                        self.dataset,
+                        index_queue,
+                        self.worker_result_queue,
+                        self.done_event,
+                        self.collate_fn,
+                        base_seed + i,
+                        self.worker_init_fn,
+                        i,
+                    ),
+                )
                 w.daemon = True
                 # NB: Process.start() actually take some time as it needs to
                 #     start a process and pass the arguments over via a pipe.
@@ -78,8 +103,8 @@ class PersistentDataLoaderIter(_DataLoaderIter):
                 self.data_queue = queue.Queue(self.num_workers * 2)
                 pin_memory_thread = threading.Thread(
                     target=_utils.pin_memory._pin_memory_loop,
-                    args=(self.worker_result_queue, self.data_queue,
-                          torch.cuda.current_device(), self.done_event))
+                    args=(self.worker_result_queue, self.data_queue, torch.cuda.current_device(), self.done_event),
+                )
                 pin_memory_thread.daemon = True
                 pin_memory_thread.start()
                 # Similar to workers (see comment above), we only register
@@ -117,7 +142,7 @@ class PersistentDataLoaderIter(_DataLoaderIter):
             raise StopIteration
 
         while True:
-            assert (not self.shutdown and self.batches_outstanding > 0)
+            assert not self.shutdown and self.batches_outstanding > 0
             idx, batch = self._get_batch()
             self.batches_outstanding -= 1
             if idx != self.rcvd_idx:
