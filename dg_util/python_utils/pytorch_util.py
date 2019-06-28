@@ -18,6 +18,10 @@ except ImportError:
 
 
 def restore(net, save_file, saved_variable_prefix="", new_variable_prefix="", skip_filter=None):
+    if isinstance(saved_variable_prefix, str):
+        saved_variable_prefix = [saved_variable_prefix]
+    if isinstance(new_variable_prefix, str):
+        new_variable_prefix = [new_variable_prefix]
     print("restoring from", save_file)
     try:
         with torch.no_grad():
@@ -33,7 +37,15 @@ def restore(net, save_file, saved_variable_prefix="", new_variable_prefix="", sk
 
             print("Restoring:")
             for restore_var_name in restore_state_dict.keys():
-                new_var_name = new_variable_prefix + restore_var_name[len(saved_variable_prefix) :]
+                new_var_name = restore_var_name
+                changed_name = False
+                for svp, nvp in zip(saved_variable_prefix, new_variable_prefix):
+                    if restore_var_name.startswith(svp):
+                        original_name = new_var_name
+                        new_var_name = new_variable_prefix + restore_var_name[len(svp):]
+                        changed_name = True
+                        break
+
                 if skip_filter is not None and not skip_filter(new_var_name):
                     print("Skipping", new_var_name, "due to skip_filter")
                     continue
@@ -48,9 +60,9 @@ def restore(net, save_file, saved_variable_prefix="", new_variable_prefix="", sk
                             net_state_dict[new_var_name] = restore_state_dict[restore_var_name].data
                         try:
                             net_state_dict[new_var_name].copy_(restore_state_dict[restore_var_name])
-                            if len(saved_variable_prefix) > 0 or len(new_variable_prefix) > 0:
+                            if changed_name:
                                 print(
-                                    str(restore_var_name)
+                                    str(original_name)
                                     + " -> "
                                     + str(new_var_name)
                                     + " -> \t"
