@@ -409,7 +409,7 @@ def fix_broadcast(input1, input2):
     shape1 = list(input1.shape[::-1])
     shape2 = list(input2.shape[::-1])
     for ii in range(len(shape1)):
-        if shape1[ii] != shape2[ii]:
+        if ii >= len(shape2) or shape1[ii] != shape2[ii]:
             shape2.insert(ii, 1)
 
     assert len(shape1) == len(shape2), (
