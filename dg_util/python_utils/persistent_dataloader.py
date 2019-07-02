@@ -25,6 +25,7 @@ class PersistentDataLoader(DataLoader):
         drop_last=False,
         timeout=0,
         worker_init_fn=None,
+        device=None
     ):
         super(PersistentDataLoader, self).__init__(
             dataset,
@@ -39,14 +40,14 @@ class PersistentDataLoader(DataLoader):
             timeout,
             worker_init_fn,
         )
-        self.iterator = PersistentDataLoaderIter(self)
+        self.iterator = PersistentDataLoaderIter(self, device)
 
     def __iter__(self):
         return self.iterator
 
 
 class PersistentDataLoaderIter(_DataLoaderIter):
-    def __init__(self, loader):
+    def __init__(self, loader, device=None):
         self.dataset = loader.dataset
         self.collate_fn = loader.collate_fn
         self.batch_sampler = loader.batch_sampler
@@ -101,9 +102,11 @@ class PersistentDataLoaderIter(_DataLoaderIter):
 
             if self.pin_memory:
                 self.data_queue = queue.Queue(self.num_workers * 2)
+                if device is None:
+                    device = torch.cuda.current_device()
                 pin_memory_thread = threading.Thread(
                     target=_utils.pin_memory._pin_memory_loop,
-                    args=(self.worker_result_queue, self.data_queue, torch.cuda.current_device(), self.done_event),
+                    args=(self.worker_result_queue, self.data_queue, device, self.done_event),
                 )
                 pin_memory_thread.daemon = True
                 pin_memory_thread.start()
