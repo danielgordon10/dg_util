@@ -25,7 +25,7 @@ class PersistentDataLoader(DataLoader):
         drop_last=False,
         timeout=0,
         worker_init_fn=None,
-        device=None
+        device=None,
     ):
         super(PersistentDataLoader, self).__init__(
             dataset,

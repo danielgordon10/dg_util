@@ -45,7 +45,7 @@ def restore(net, save_file, saved_variable_prefix="", new_variable_prefix="", sk
                         continue
                     if restore_var_name.startswith(svp):
                         original_name = new_var_name
-                        new_var_name = nvp + restore_var_name[len(svp):]
+                        new_var_name = nvp + restore_var_name[len(svp) :]
                         changed_name = True
                         break
 
