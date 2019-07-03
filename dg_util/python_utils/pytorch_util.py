@@ -40,6 +40,9 @@ def restore(net, save_file, saved_variable_prefix="", new_variable_prefix="", sk
                 new_var_name = restore_var_name
                 changed_name = False
                 for svp, nvp in zip(saved_variable_prefix, new_variable_prefix):
+                    if len(svp) == 0 and len(nvp) == 0:
+                        # Ignore when both are empty, probably just not provided
+                        continue
                     if restore_var_name.startswith(svp):
                         original_name = new_var_name
                         new_var_name = nvp + restore_var_name[len(svp):]
