@@ -50,7 +50,7 @@ def subplot(
             normalize = [normalize[im_ind] for im_ind in order]
 
     returned_image = np.full(
-        ((output_height + 2 * border) * rows, (output_width + 2 * border) * cols, 3), 191, dtype=np.uint8
+        ((output_height + border) * rows + 2 * border, (output_width + border) * cols + 2 * border, 3), 191, dtype=np.uint8
     )
     if fancy_text:
         from PIL import Image, ImageDraw, ImageFont
@@ -144,8 +144,8 @@ def subplot(
                                     1,
                                 )
                 returned_image[
-                    border + (output_height + 2 * border) * row : (output_height + 2 * border) * (row + 1),
-                    border + (output_width + 2 * border) * col : (output_width + 2 * border) * (col + 1),
+                    border + (output_height + border) * row : (output_height + border) * (row + 1),
+                    border + (output_width + border) * col : (output_width + border) * (col + 1),
                     :,
                 ] = im
             except Exception as ex:
