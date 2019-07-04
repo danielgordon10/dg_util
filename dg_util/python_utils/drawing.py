@@ -144,8 +144,8 @@ def subplot(
                                     1,
                                 )
                 returned_image[
-                    border + (output_height + border) * row : (output_height + border) * (row + 1),
-                    border + (output_width + border) * col : (output_width + border) * (col + 1),
+                    border + (output_height + 2 * border) * row : (output_height + 2 * border) * (row + 1),
+                    border + (output_width + 2 * border) * col : (output_width + 2 * border) * (col + 1),
                     :,
                 ] = im
             except Exception as ex:
