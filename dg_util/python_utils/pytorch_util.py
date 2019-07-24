@@ -222,7 +222,7 @@ def split_dim_get_shape(curr_shape, dim, d1, d2):
 def split_dim(input_tensor, dim, d1, d2):
     curr_shape = list(input_tensor.shape)
     new_shape = split_dim_get_shape(curr_shape, dim, d1, d2)
-    if type(input_tensor) == torch.Tensor:
+    if isinstance(input_tensor, torch.Tensor):
         return input_tensor.view(new_shape)
     else:
         return input_tensor.reshape(new_shape)
