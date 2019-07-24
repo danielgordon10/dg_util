@@ -212,17 +212,20 @@ class RemoveDim(nn.Module):
         return remove_dim(input_tensor, self.dim)
 
 
-def split_axis_get_shape(curr_shape, axis, d1, d2):
-    assert axis < len(curr_shape), "Axis must be less than the current rank"
-    curr_shape.insert(axis, d1)
-    curr_shape[axis + 1] = d2
+def split_dim_get_shape(curr_shape, dim, d1, d2):
+    assert dim < len(curr_shape), "Axis must be less than the current rank"
+    curr_shape.insert(dim, d1)
+    curr_shape[dim + 1] = d2
     return curr_shape
 
 
-def split_axis(input_tensor, axis, d1, d2):
+def split_dim(input_tensor, dim, d1, d2):
     curr_shape = list(input_tensor.shape)
-    new_shape = split_axis_get_shape(curr_shape, axis, d1, d2)
-    return input_tensor.view(new_shape)
+    new_shape = split_dim_get_shape(curr_shape, dim, d1, d2)
+    if type(input_tensor) == torch.Tensor:
+        return input_tensor.view(new_shape)
+    else:
+        return input_tensor.reshape(new_shape)
 
 
 def detatch_recursive(h):
@@ -233,11 +236,11 @@ def detatch_recursive(h):
         return tuple(detatch_recursive(v) for v in h)
 
 
-def to_numpy_array(array):
+def to_numpy(array):
     if isinstance(array, torch.Tensor):
         return array.detach().cpu().numpy()
     elif isinstance(array, dict):
-        return {key: to_numpy_array(val) for key, val in array.items()}
+        return {key: to_numpy(val) for key, val in array.items()}
     else:
         return np.asarray(array)
 
