@@ -265,6 +265,13 @@ from_numpy_warn = defaultdict(lambda: False)
 
 def from_numpy(np_array):
     global from_numpy_warn
+    if isinstance(np_array, list):
+        try:
+            np_array = np.stack(np_array, 0)
+        except ValueError:
+            np_array = np.stack([from_numpy(val) for val in np_array], 0)
+    elif isinstance(np_array, dict):
+        return {key: from_numpy(val) for key, val in np_array.items()}
     np_array = np.asarray(np_array)
     if np_array.dtype == np.uint32:
         if not from_numpy_warn[np.uint32]:
