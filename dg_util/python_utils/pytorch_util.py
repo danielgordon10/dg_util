@@ -192,8 +192,12 @@ def remove_dim_get_shape(curr_shape, dim):
 def remove_dim(input_tensor, dim):
     curr_shape = list(input_tensor.shape)
     if type(dim) == int:
+        if dim < 0:
+            dim = len(curr_shape) + dim
         new_shape = remove_dim_get_shape(curr_shape, dim)
     else:
+        dim = [dd if dd >= 0 else len(curr_shape) + dd for dd in dim]
+        assert len(np.unique(dim)) == len(dim), "Repeated dims are not allowed"
         for ax in sorted(dim, reverse=True):
             curr_shape = remove_dim_get_shape(curr_shape, ax)
         new_shape = curr_shape
@@ -221,6 +225,8 @@ def split_dim_get_shape(curr_shape, dim, d1, d2):
 
 def split_dim(input_tensor, dim, d1, d2):
     curr_shape = list(input_tensor.shape)
+    if dim < 0:
+        dim = len(curr_shape) + dim
     new_shape = split_dim_get_shape(curr_shape, dim, d1, d2)
     if isinstance(input_tensor, torch.Tensor):
         return input_tensor.view(new_shape)

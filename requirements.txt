@@ -5,3 +5,7 @@ scikit-image
 scikit-learn
 Pillow>=4.0.0
 MulticoreTSNE
+pytest
+torch
+torchvision
+
