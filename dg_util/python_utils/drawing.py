@@ -50,7 +50,9 @@ def subplot(
             normalize = [normalize[im_ind] for im_ind in order]
 
     returned_image = np.full(
-        ((output_height + border) * rows + 2 * border, (output_width + border) * cols + 2 * border, 3), 191, dtype=np.uint8
+        ((output_height + border) * rows + 2 * border, (output_width + border) * cols + 2 * border, 3),
+        191,
+        dtype=np.uint8,
     )
     if fancy_text:
         from PIL import Image, ImageDraw, ImageFont

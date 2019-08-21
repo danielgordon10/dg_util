@@ -44,9 +44,21 @@ def min_resize(img, size, interpolation=cv2.INTER_LINEAR, height_channel=0, widt
     h, w = map(float, img.shape[:2])
     if min([h, w]) != size:
         if h <= w:
-            img = resize(img, (int(round((w / h) * size)), int(size)), interpolation, height_channel=height_channel, width_channel=width_channel)
+            img = resize(
+                img,
+                (int(round((w / h) * size)), int(size)),
+                interpolation,
+                height_channel=height_channel,
+                width_channel=width_channel,
+            )
         else:
-            img = resize(img, (int(size), int(round((h / w) * size))), interpolation, height_channel=height_channel, width_channel=width_channel)
+            img = resize(
+                img,
+                (int(size), int(round((h / w) * size))),
+                interpolation,
+                height_channel=height_channel,
+                width_channel=width_channel,
+            )
     return img
 
 
@@ -57,9 +69,21 @@ def max_resize(img, size, interpolation=cv2.INTER_LINEAR, height_channel=0, widt
     h, w = map(float, img.shape[:2])
     if max([h, w]) != size:
         if h >= w:
-            img = resize(img, (int(round((w / h) * size)), int(size)), interpolation, height_channel=height_channel, width_channel=width_channel)
+            img = resize(
+                img,
+                (int(round((w / h) * size)), int(size)),
+                interpolation,
+                height_channel=height_channel,
+                width_channel=width_channel,
+            )
         else:
-            img = resize(img, (int(size), int(round((h / w) * size))), interpolation, height_channel=height_channel, width_channel=width_channel)
+            img = resize(
+                img,
+                (int(size), int(round((h / w) * size))),
+                interpolation,
+                height_channel=height_channel,
+                width_channel=width_channel,
+            )
     return img
 
 
