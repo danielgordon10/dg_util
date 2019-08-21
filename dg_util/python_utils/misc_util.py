@@ -41,7 +41,7 @@ def min_resize(img, size, interpolation=cv2.INTER_LINEAR, height_channel=0, widt
     """
     Resize an image so that it is size along the minimum spatial dimension.
     """
-    h, w = map(float, img.shape[:2])
+    h, w = map(float, (img.shape[height_channel], img.shape[width_channel]))
     if min([h, w]) != size:
         if h <= w:
             img = resize(
@@ -66,7 +66,7 @@ def max_resize(img, size, interpolation=cv2.INTER_LINEAR, height_channel=0, widt
     """
     Resize an image so that it is size along the maximum spatial dimension.
     """
-    h, w = map(float, img.shape[:2])
+    h, w = map(float, (img.shape[height_channel], img.shape[width_channel]))
     if max([h, w]) != size:
         if h >= w:
             img = resize(
