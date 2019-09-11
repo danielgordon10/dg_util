@@ -26,11 +26,14 @@ def restore(net, save_file, saved_variable_prefix="", new_variable_prefix="", sk
     try:
         with torch.no_grad():
             net_state_dict = net.state_dict()
-            if torch.cuda.is_available():
-                device = next(net.parameters()).device
-                restore_state_dict = torch.load(save_file, device)
-            else:
-                restore_state_dict = torch.load(save_file, map_location="cpu")
+            restore_state_dict = torch.load(save_file, map_location="cpu")
+            if type(restore_state_dict) != OrderedDict:
+                print('Restored is not OrderedDict, may contain other values.')
+                for key, val in restore_state_dict.items():
+                    if type(val) == OrderedDict:
+                        print('Extracting from', key)
+                        restore_state_dict = val
+                        break
 
             restored_var_names = set()
             new_var_names = set()
