@@ -152,7 +152,7 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
             else:
                 # no valid `self.rcvd_idx` is found (i.e., didn't break)
                 ######## CHHANGED PART
-                self.sample_iter = iter(self.index_sampler)
+                self.sampler_iter = iter(self.index_sampler)
                 for _ in range(2 * self.num_workers):
                     self._try_put_index()
                 #self._shutdown_workers()
