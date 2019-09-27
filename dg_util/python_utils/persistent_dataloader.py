@@ -124,7 +124,7 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
 
             # prime the prefetch loop
             for _ in range(2 * self.num_workers):
-                self._put_indices()
+                self._try_put_index()
 
     def __next__(self):
         if self.num_workers == 0:  # same-process loading
@@ -143,7 +143,7 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
             # prime the prefetch loop
             self.sample_iter = iter(self.batch_sampler)
             for _ in range(2 * self.num_workers):
-                self._put_indices()
+                self._try_put_index()
             raise StopIteration
 
         while True:
