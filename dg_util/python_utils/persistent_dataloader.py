@@ -8,7 +8,7 @@ import torch.utils.data
 import torch.utils.data.distributed
 from torch._six import queue
 from torch.utils.data import _utils
-from torch.utils.data.dataloader import DataLoader, _DataLoaderIter
+from torch.utils.data.dataloader import DataLoader, _MultiProcessingDataLoaderIter
 
 
 class PersistentDataLoader(DataLoader):
@@ -20,11 +20,12 @@ class PersistentDataLoader(DataLoader):
         sampler=None,
         batch_sampler=None,
         num_workers=0,
-        collate_fn=_utils.collate.default_collate,
+        collate_fn=None,
         pin_memory=False,
         drop_last=False,
         timeout=0,
         worker_init_fn=None,
+        multiprocessing_context=None,
         device=None,
     ):
         super(PersistentDataLoader, self).__init__(
@@ -39,6 +40,7 @@ class PersistentDataLoader(DataLoader):
             drop_last,
             timeout,
             worker_init_fn,
+            multiprocessing_context,
         )
         self.iterator = PersistentDataLoaderIter(self, device)
 
@@ -46,7 +48,7 @@ class PersistentDataLoader(DataLoader):
         return self.iterator
 
 
-class PersistentDataLoaderIter(_DataLoaderIter):
+class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
     def __init__(self, loader, device=None):
         self.dataset = loader.dataset
         self.collate_fn = loader.collate_fn
