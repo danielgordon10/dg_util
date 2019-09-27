@@ -65,12 +65,12 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
             self.worker_init_fn = loader.worker_init_fn
             self.worker_queue_idx = 0
             self.worker_result_queue = multiprocessing.Queue(self.num_workers * 2)
-            self.batches_outstanding = 0
             self.worker_pids_set = False
             self.shutdown = False
             self.send_idx = 0
             self.rcvd_idx = 0
             self.reorder_dict = {}
+            self.tasks_outstanding = 0  # always equal to count(v for v in task_info.values() if len(v) == 1)
             self.done_event = multiprocessing.Event()
 
             self.index_queues = []
@@ -139,7 +139,7 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
             batch = self.reorder_dict.pop(self.rcvd_idx)
             return self._process_next_batch(batch)
 
-        if self.batches_outstanding == 0:
+        if self.tasks_outstanding == 0:
             # prime the prefetch loop
             self.sample_iter = iter(self.batch_sampler)
             for _ in range(2 * self.num_workers):
@@ -147,9 +147,9 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
             raise StopIteration
 
         while True:
-            assert not self.shutdown and self.batches_outstanding > 0
+            assert not self.shutdown and self.tasks_outstanding > 0
             idx, batch = self._get_batch()
-            self.batches_outstanding -= 1
+            self.tasks_outstanding -= 1
             if idx != self.rcvd_idx:
                 # store out-of-order samples
                 self.reorder_dict[idx] = batch
