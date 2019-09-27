@@ -1,3 +1,4 @@
+import itertools
 import threading
 
 import torch
@@ -8,7 +9,7 @@ import torch.utils.data
 import torch.utils.data.distributed
 from torch._six import queue
 from torch.utils.data import _utils
-from torch.utils.data.dataloader import DataLoader, _MultiProcessingDataLoaderIter
+from torch.utils.data.dataloader import DataLoader, _MultiProcessingDataLoaderIter, _DatasetKind
 
 
 class PersistentDataLoader(DataLoader):
@@ -50,110 +51,134 @@ class PersistentDataLoader(DataLoader):
 
 class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
     def __init__(self, loader, device=None):
-        self.dataset = loader.dataset
-        self.collate_fn = loader.collate_fn
-        self.batch_sampler = loader.batch_sampler
-        self.num_workers = loader.num_workers
-        self.pin_memory = loader.pin_memory and torch.cuda.is_available()
-        self.timeout = loader.timeout
 
-        self.sample_iter = iter(self.batch_sampler)
 
-        base_seed = torch.LongTensor(1).random_().item()
 
-        if self.num_workers > 0:
-            self.worker_init_fn = loader.worker_init_fn
-            self.worker_queue_idx = 0
-            self.worker_result_queue = multiprocessing.Queue(self.num_workers * 2)
-            self.worker_pids_set = False
-            self.shutdown = False
-            self.send_idx = 0
-            self.rcvd_idx = 0
-            self.reorder_dict = {}
-            self.tasks_outstanding = 0  # always equal to count(v for v in task_info.values() if len(v) == 1)
-            self.done_event = multiprocessing.Event()
 
-            self.index_queues = []
-            self.workers = []
-            for i in range(self.num_workers):
-                index_queue = multiprocessing.Queue(2)
-                index_queue.cancel_join_thread()
-                w = multiprocessing.Process(
-                    target=_utils.worker._worker_loop,
-                    args=(
-                        self.dataset,
-                        index_queue,
-                        self.worker_result_queue,
-                        self.done_event,
-                        self.collate_fn,
-                        base_seed + i,
-                        self.worker_init_fn,
-                        i,
-                    ),
-                )
-                w.daemon = True
-                # NB: Process.start() actually take some time as it needs to
-                #     start a process and pass the arguments over via a pipe.
-                #     Therefore, we only add a worker to self.workers list after
-                #     it started, so that we do not call .join() if program dies
-                #     before it starts, and __del__ tries to join but will get:
-                #     AssertionError: can only join a started process.
-                w.start()
-                self.index_queues.append(index_queue)
-                self.workers.append(w)
+        super(_MultiProcessingDataLoaderIter, self).__init__(loader)
 
-            if self.pin_memory:
-                self.data_queue = queue.Queue(self.num_workers * 2)
-                if device is None:
-                    device = torch.cuda.current_device()
-                pin_memory_thread = threading.Thread(
-                    target=_utils.pin_memory._pin_memory_loop,
-                    args=(self.worker_result_queue, self.data_queue, device, self.done_event),
-                )
-                pin_memory_thread.daemon = True
-                pin_memory_thread.start()
-                # Similar to workers (see comment above), we only register
-                # pin_memory_thread once it is started.
-                self.pin_memory_thread = pin_memory_thread
-            else:
-                self.data_queue = self.worker_result_queue
+        assert self.num_workers > 0
 
-            _utils.signal_handling._set_worker_pids(id(self), tuple(w.pid for w in self.workers))
-            _utils.signal_handling._set_SIGCHLD_handler()
-            self.worker_pids_set = True
+        if loader.multiprocessing_context is None:
+            multiprocessing_context = multiprocessing
+        else:
+            multiprocessing_context = loader.multiprocessing_context
 
-            # prime the prefetch loop
-            for _ in range(2 * self.num_workers):
-                self._try_put_index()
+        self.worker_init_fn = loader.worker_init_fn
+        self.worker_queue_idx_cycle = itertools.cycle(range(self.num_workers))
+        self.worker_result_queue = multiprocessing_context.Queue()
+        self.worker_pids_set = False
+        self.shutdown = False
+        self.send_idx = 0  # idx of the next task to be sent to workers
+        self.rcvd_idx = 0  # idx of the next task to be returned in __next__
+        # information about data not yet yielded, i.e., tasks w/ indices in range [rcvd_idx, send_idx).
+        # map: task idx => - (worker_id,)        if data isn't fetched (outstanding)
+        #                  \ (worker_id, data)   if data is already fetched (out-of-order)
+        self.task_info = {}
+        self.tasks_outstanding = 0  # always equal to count(v for v in task_info.values() if len(v) == 1)
+        self.workers_done_event = multiprocessing_context.Event()
+
+        self.index_queues = []
+        self.workers = []
+        # A list of booleans representing whether each worker still has work to
+        # do, i.e., not having exhausted its iterable dataset object. It always
+        # contains all `True`s if not using an iterable-style dataset
+        # (i.e., if kind != Iterable).
+        self.workers_status = []
+        for i in range(self.num_workers):
+            index_queue = multiprocessing_context.Queue()
+            # index_queue.cancel_join_thread()
+            w = multiprocessing_context.Process(
+                target=_utils.worker._worker_loop,
+                args=(self.dataset_kind, self.dataset, index_queue,
+                      self.worker_result_queue, self.workers_done_event,
+                      self.auto_collation, self.collate_fn, self.drop_last,
+                      self.base_seed + i, self.worker_init_fn, i, self.num_workers))
+            w.daemon = True
+            # NB: Process.start() actually take some time as it needs to
+            #     start a process and pass the arguments over via a pipe.
+            #     Therefore, we only add a worker to self.workers list after
+            #     it started, so that we do not call .join() if program dies
+            #     before it starts, and __del__ tries to join but will get:
+            #     AssertionError: can only join a started process.
+            w.start()
+            self.index_queues.append(index_queue)
+            self.workers.append(w)
+            self.workers_status.append(True)
+
+        if self.pin_memory:
+            self.pin_memory_thread_done_event = threading.Event()
+            self.data_queue = queue.Queue()
+            ###### CHANGED PART
+            if device is None:
+                device = torch.cuda.current_device()
+            pin_memory_thread = threading.Thread(
+                target=_utils.pin_memory._pin_memory_loop,
+                args=(self.worker_result_queue, self.data_queue,
+                      device,
+                      self.pin_memory_thread_done_event))
+            pin_memory_thread.daemon = True
+            pin_memory_thread.start()
+            # Similar to workers (see comment above), we only register
+            # pin_memory_thread once it is started.
+            self.pin_memory_thread = pin_memory_thread
+        else:
+            self.data_queue = self.worker_result_queue
+
+        _utils.signal_handling._set_worker_pids(id(self), tuple(w.pid for w in self.workers))
+        _utils.signal_handling._set_SIGCHLD_handler()
+        self.worker_pids_set = True
+
+        # prime the prefetch loop
+        for _ in range(2 * self.num_workers):
+            self._try_put_index()
 
     def __next__(self):
-        if self.num_workers == 0:  # same-process loading
-            indices = next(self.sample_iter)  # may raise StopIteration
-            batch = self.collate_fn([self.dataset[i] for i in indices])
-            if self.pin_memory:
-                batch = _utils.pin_memory.pin_memory_batch(batch)
-            return batch
-
-        # check if the next sample has already been generated
-        if self.rcvd_idx in self.reorder_dict:
-            batch = self.reorder_dict.pop(self.rcvd_idx)
-            return self._process_next_batch(batch)
-
-        if self.tasks_outstanding == 0:
-            # prime the prefetch loop
-            self.sample_iter = iter(self.batch_sampler)
-            for _ in range(2 * self.num_workers):
-                self._try_put_index()
-            raise StopIteration
-
         while True:
+            # If the worker responsible for `self.rcvd_idx` has already ended
+            # and was unable to fulfill this task (due to exhausting an `IterableDataset`),
+            # we try to advance `self.rcvd_idx` to find the next valid index.
+            #
+            # This part needs to run in the loop because both the `self._get_data()`
+            # call and `_IterableDatasetStopIteration` check below can mark
+            # extra worker(s) as dead.
+            while self.rcvd_idx < self.send_idx:
+                info = self.task_info[self.rcvd_idx]
+                worker_id = info[0]
+                if len(info) == 2 or self.workers_status[worker_id]:  # has data or is still active
+                    break
+                del self.task_info[self.rcvd_idx]
+                self.rcvd_idx += 1
+            else:
+                # no valid `self.rcvd_idx` is found (i.e., didn't break)
+                ######## CHHANGED PART
+                self.sample_iter = iter(self.index_sampler)
+                for _ in range(2 * self.num_workers):
+                    self._try_put_index()
+                #self._shutdown_workers()
+                #raise StopIteration
+
+            # Now `self.rcvd_idx` is the batch index we want to fetch
+
+            # Check if the next sample has already been generated
+            if len(self.task_info[self.rcvd_idx]) == 2:
+                data = self.task_info.pop(self.rcvd_idx)[1]
+                return self._process_data(data)
+
             assert not self.shutdown and self.tasks_outstanding > 0
-            idx, batch = self._get_batch()
+            idx, data = self._get_data()
             self.tasks_outstanding -= 1
+
+            if self.dataset_kind == _DatasetKind.Iterable:
+                # Check for _IterableDatasetStopIteration
+                if isinstance(data, _utils.worker._IterableDatasetStopIteration):
+                    self._shutdown_worker(data.worker_id)
+                    self._try_put_index()
+                    continue
+
             if idx != self.rcvd_idx:
                 # store out-of-order samples
-                self.reorder_dict[idx] = batch
-                continue
-            return self._process_next_batch(batch)
-
-    next = __next__  # Python 2 compatibility
+                self.task_info[idx] += (data,)
+            else:
+                del self.task_info[idx]
+                return self._process_data(data)
