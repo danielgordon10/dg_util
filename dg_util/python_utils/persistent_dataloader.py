@@ -156,7 +156,8 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
                 for _ in range(2 * self.num_workers):
                     self._try_put_index()
                 #self._shutdown_workers()
-                #raise StopIteration
+                # Still indicate end of epoch
+                raise StopIteration
 
             # Now `self.rcvd_idx` is the batch index we want to fetch
 
