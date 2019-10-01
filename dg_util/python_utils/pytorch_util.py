@@ -440,7 +440,7 @@ def get_data_parallel(module, device_ids):
         return DummyScope(module, ["module"])
     else:
         print("Torch using", len(device_ids), "GPUs", device_ids)
-        return DataParallelFix(module, device_ids=device_ids)
+        return nn.DataParallel(module, device_ids=device_ids)
 
 
 def reset_module(module):
