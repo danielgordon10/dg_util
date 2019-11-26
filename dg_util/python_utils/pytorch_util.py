@@ -253,7 +253,7 @@ def to_numpy(array):
         return {key: to_numpy(val) for key, val in array.items()}
     elif isinstance(array, list) and isinstance(array[0], torch.Tensor):
         array = [to_numpy(val) for val in array]
-        array = np.asarray(array)
+        return np.asarray(array)
     else:
         return np.asarray(array)
 
