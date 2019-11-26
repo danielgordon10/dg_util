@@ -251,6 +251,9 @@ def to_numpy(array):
         return array.detach().cpu().numpy()
     elif isinstance(array, dict):
         return {key: to_numpy(val) for key, val in array.items()}
+    elif isinstance(array, list) and isinstance(array[0], torch.Tensor):
+        array = [to_numpy(val) for val in array]
+        array = np.asarray(array)
     else:
         return np.asarray(array)
 
@@ -432,6 +435,7 @@ class DataParallelFix(nn.DataParallel):
         self._outputs = self.parallel_apply(self._replicas, inputs, kwargs)
 
         return self.gather(self._outputs, self.output_device)
+
 
 def get_data_parallel(module, device_ids):
     if isinstance(device_ids, str):
