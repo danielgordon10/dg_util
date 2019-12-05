@@ -29,10 +29,10 @@ def restore(net, save_file, saved_variable_prefix="", new_variable_prefix="", sk
             net_state_dict = net.state_dict()
             restore_state_dict = torch.load(save_file, map_location="cpu")
             if type(restore_state_dict) != OrderedDict:
-                print('Restored is not OrderedDict, may contain other values.')
+                print("Restored is not OrderedDict, may contain other values.")
                 for key, val in restore_state_dict.items():
                     if type(val) == OrderedDict:
-                        print('Extracting from', key)
+                        print("Extracting from", key)
                         restore_state_dict = val
                         break
 
@@ -403,6 +403,7 @@ class DummyScope(nn.Module):
     def forward(self, *input, **kwargs):
         return getattr(self, self.scope_list[0])(*input, **kwargs)
 
+
 class DataParallelFix(nn.DataParallel):
     """
     Temporary workaround for https://github.com/pytorch/pytorch/issues/15716.
@@ -423,15 +424,14 @@ class DataParallelFix(nn.DataParallel):
                 raise RuntimeError(
                     "module must have its parameters and buffers "
                     "on device {} (device_ids[0]) but found one of "
-                    "them on device: {}".format(self.src_device_obj,
-                                                t.device))
+                    "them on device: {}".format(self.src_device_obj, t.device)
+                )
 
         inputs, kwargs = self.scatter(inputs, kwargs, self.device_ids)
         if len(self.device_ids) == 1:
             return self.module(*inputs[0], **kwargs[0])
 
-        self._replicas = self.replicate(self.module,
-                                  self.device_ids[:len(inputs)])
+        self._replicas = self.replicate(self.module, self.device_ids[: len(inputs)])
         self._outputs = self.parallel_apply(self._replicas, inputs, kwargs)
 
         return self.gather(self._outputs, self.output_device)
@@ -585,3 +585,30 @@ class ToTensor(object):
             return img.float().div(self.scale)
         else:
             return img
+
+
+class BaseModel(nn.Module):
+    def __init__(self):
+        super(BaseModel, self).__init__()
+        self._device = None
+        self.saves = 0
+
+    @property
+    def device(self):
+        if self._device is None:
+            self._device = next(self.parameters()).device
+        return self._device
+
+    def to(self, *args, **kwargs):
+        self._device = None
+        return super(BaseModel, self).to(*args, **kwargs)
+
+    @property
+    def name(self):
+        return type(self).__name__
+
+    def restore(self, checkpoint_dir, saved_variable_prefix=None, new_variable_prefix=None, skip_filter=None) -> int:
+        iteration = restore_from_folder(
+            self, os.path.join(checkpoint_dir, "*"), saved_variable_prefix, new_variable_prefix, skip_filter
+        )
+        return iteration

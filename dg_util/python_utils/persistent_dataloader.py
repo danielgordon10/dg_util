@@ -52,9 +52,6 @@ class PersistentDataLoader(DataLoader):
 class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
     def __init__(self, loader, device=None):
 
-
-
-
         super(_MultiProcessingDataLoaderIter, self).__init__(loader)
 
         assert self.num_workers > 0
@@ -90,10 +87,21 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
             # index_queue.cancel_join_thread()
             w = multiprocessing_context.Process(
                 target=_utils.worker._worker_loop,
-                args=(self.dataset_kind, self.dataset, index_queue,
-                      self.worker_result_queue, self.workers_done_event,
-                      self.auto_collation, self.collate_fn, self.drop_last,
-                      self.base_seed + i, self.worker_init_fn, i, self.num_workers))
+                args=(
+                    self.dataset_kind,
+                    self.dataset,
+                    index_queue,
+                    self.worker_result_queue,
+                    self.workers_done_event,
+                    self.auto_collation,
+                    self.collate_fn,
+                    self.drop_last,
+                    self.base_seed + i,
+                    self.worker_init_fn,
+                    i,
+                    self.num_workers,
+                ),
+            )
             w.daemon = True
             # NB: Process.start() actually take some time as it needs to
             #     start a process and pass the arguments over via a pipe.
@@ -114,9 +122,8 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
                 device = torch.cuda.current_device()
             pin_memory_thread = threading.Thread(
                 target=_utils.pin_memory._pin_memory_loop,
-                args=(self.worker_result_queue, self.data_queue,
-                      device,
-                      self.pin_memory_thread_done_event))
+                args=(self.worker_result_queue, self.data_queue, device, self.pin_memory_thread_done_event),
+            )
             pin_memory_thread.daemon = True
             pin_memory_thread.start()
             # Similar to workers (see comment above), we only register
@@ -155,7 +162,7 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
                 self.sampler_iter = iter(self.index_sampler)
                 for _ in range(2 * self.num_workers):
                     self._try_put_index()
-                #self._shutdown_workers()
+                # self._shutdown_workers()
                 # Still indicate end of epoch
                 raise StopIteration
 
