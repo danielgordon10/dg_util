@@ -602,7 +602,7 @@ class BaseModel(nn.Module):
     def to(self, *args, **kwargs):
         self._device = None
         model = super(BaseModel, self).to(*args, **kwargs)
-        self.device()
+        device = self.device
         return model
 
     @property
