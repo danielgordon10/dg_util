@@ -40,8 +40,8 @@ def tsne_image(
         Background color value
 
     """
+    features = np.array(features, dtype=np.float32)
     assert len(features.shape) == 2
-    features = np.array(features, dtype=np.float64)
     _, uniques = misc_util.unique_rows(images.reshape(images.shape[0], -1), return_inverse=True)
     uniques.sort()
     images = images[uniques]
