@@ -11,6 +11,7 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 from torch import nn
+from torch.utils.data.dataset import Dataset
 
 try:
     import accimage
@@ -614,3 +615,21 @@ class BaseModel(nn.Module):
             self, os.path.join(checkpoint_dir, "*"), saved_variable_prefix, new_variable_prefix, skip_filter
         )
         return iteration
+
+
+class IndexWrapperDataset(Dataset):
+    def __init__(self, other_dataset: Dataset):
+        self.other_dataset = other_dataset
+
+    def __str__(self):
+        return 'IndexWrapperDataset: ' + str(self.other_dataset)
+
+    def __len__(self):
+        return len(self.other_dataset)
+
+    def __repr__(self):
+        return 'IndexWrapperDataset: ' + repr(self.other_dataset)
+
+    def __getitem__(self, item):
+        result = self.other_dataset[item]
+        return result, item
