@@ -51,10 +51,10 @@ class RollingAverageMeter(object):
             prev_val = self.deque.popleft()
             diff = val - prev_val
             self.sum += diff
-            self.avg += diff / len(self.deque)
+            self.avg += diff / (len(self.deque) + 1)
         else:
             self.sum += val
-            self.avg = self.sum / len(self.deque)
+            self.avg = self.sum / (len(self.deque) + 1)
 
         self.deque.append(val)
         self.val = val
