@@ -633,3 +633,8 @@ class IndexWrapperDataset(Dataset):
     def __getitem__(self, item):
         result = self.other_dataset[item]
         return result, item
+
+
+class Identity(nn.Module):
+    def forward(self, data):
+        return data
