@@ -21,6 +21,7 @@ except ImportError:
 
 ########## Restore/Save Model Stuff ##########
 
+
 def restore(net, save_file, saved_variable_prefix="", new_variable_prefix="", skip_filter=None):
     if isinstance(saved_variable_prefix, str):
         saved_variable_prefix = [saved_variable_prefix]
@@ -190,6 +191,7 @@ def rename_many_networks_variables(change_dict, basedir, new_basedir="converted"
 
 ########## Remove/Split dim ##########
 
+
 def remove_dim_get_shape(curr_shape, dim):
     assert dim > 0, "Axis must be greater than 0"
     curr_shape = list(curr_shape)
@@ -235,6 +237,7 @@ def split_dim(input_tensor, dim, d1, d2):
 
 
 ########## From/To Numpy ##########
+
 
 def to_numpy(array):
     if isinstance(array, torch.Tensor):
@@ -295,6 +298,7 @@ def from_numpy(np_array):
 
 
 ############### Layers ###############
+
 
 class Identity(nn.Module):
     def forward(self, data):
@@ -370,6 +374,7 @@ class BaseModel(nn.Module):
 
 
 ########## Data/Preprocessing Utils ##########
+
 
 def fix_broadcast(input1, input2):
     original_shape1 = input1.shape
@@ -504,13 +509,13 @@ class IndexWrapperDataset(Dataset):
         self.other_dataset = other_dataset
 
     def __str__(self):
-        return 'IndexWrapperDataset: ' + str(self.other_dataset)
+        return "IndexWrapperDataset: " + str(self.other_dataset)
 
     def __len__(self):
         return len(self.other_dataset)
 
     def __repr__(self):
-        return 'IndexWrapperDataset: ' + repr(self.other_dataset)
+        return "IndexWrapperDataset: " + repr(self.other_dataset)
 
     def __getitem__(self, item):
         result = self.other_dataset[item]
@@ -518,6 +523,7 @@ class IndexWrapperDataset(Dataset):
 
 
 ########## Other ##########
+
 
 class DataParallelFix(nn.DataParallel):
     """
