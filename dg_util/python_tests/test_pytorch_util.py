@@ -118,3 +118,19 @@ def test_fix_broadcast():
     new_arr1, new_arr2 = pt_util.fix_broadcast(arr1, arr2)
     assert new_arr1.shape == (10, 6, 8, 10)
     assert new_arr2.shape == (1, 1, 1, 10)
+
+
+def test_lambda_layer():
+    data1 = torch.rand(10, 20, 30).requires_grad_(True)
+    data2 = data1.clone().detach().requires_grad_(True)
+    layer = pt_util.LambdaLayer(lambda x: x.transpose(0, 1))
+
+    output1 = data1.transpose(0, 1)
+    output2 = layer(data2)
+
+    assert output1.shape == output2.shape
+    assert torch.allclose(output1, output2)
+
+    (2 * output1.mean() + 2 * output2.mean()).backward()
+    assert torch.allclose(data1.grad, data2.grad)
+    assert data1.grad.abs().sum() > 0

@@ -19,6 +19,8 @@ except ImportError:
     accimage = None
 
 
+########## Restore/Save Model Stuff ##########
+
 def restore(net, save_file, saved_variable_prefix="", new_variable_prefix="", skip_filter=None):
     if isinstance(saved_variable_prefix, str):
         saved_variable_prefix = [saved_variable_prefix]
@@ -186,6 +188,8 @@ def rename_many_networks_variables(change_dict, basedir, new_basedir="converted"
                 rename_network_variables(change_dict, filename, new_basedir)
 
 
+########## Remove/Split dim ##########
+
 def remove_dim_get_shape(curr_shape, dim):
     assert dim > 0, "Axis must be greater than 0"
     curr_shape = list(curr_shape)
@@ -212,15 +216,6 @@ def remove_dim(input_tensor, dim):
         return input_tensor.reshape(new_shape)
 
 
-class RemoveDim(nn.Module):
-    def __init__(self, dim):
-        super(RemoveDim, self).__init__()
-        self.dim = dim
-
-    def forward(self, input_tensor):
-        return remove_dim(input_tensor, self.dim)
-
-
 def split_dim_get_shape(curr_shape, dim, d1, d2):
     assert dim < len(curr_shape), "Axis must be less than the current rank"
     curr_shape.insert(dim, d1)
@@ -239,13 +234,7 @@ def split_dim(input_tensor, dim, d1, d2):
         return input_tensor.reshape(new_shape)
 
 
-def detatch_recursive(h):
-    """Wraps hidden states in new Tensors, to detach them from their history."""
-    if isinstance(h, torch.Tensor):
-        return h.detach()
-    else:
-        return tuple(detatch_recursive(v) for v in h)
-
+########## From/To Numpy ##########
 
 def to_numpy(array):
     if isinstance(array, torch.Tensor):
@@ -305,83 +294,29 @@ def from_numpy(np_array):
     return torch.from_numpy(np_array)
 
 
-def weighted_loss(loss_function_output, weights, reduction="mean"):
-    if isinstance(weights, numbers.Number):
-        if reduction == "mean":
-            return weights * torch.mean(loss_function_output)
-        elif reduction == "sum":
-            return weights * torch.sum(loss_function_output)
-        else:
-            return weights * loss_function_output
+############### Layers ###############
 
-    elif weights.dtype == torch.uint8 and reduction != "none":
-        if reduction == "mean":
-            return torch.mean(torch.masked_select(loss_function_output, weights))
-        else:
-            return torch.sum(torch.masked_select(loss_function_output, weights))
-    else:
-        if reduction == "mean":
-            return torch.mean(loss_function_output * weights)
-        elif reduction == "sum":
-            return torch.sum(loss_function_output * weights)
-        else:
-            return loss_function_output * weights
+class Identity(nn.Module):
+    def forward(self, data):
+        return data
 
 
-def get_one_hot(data, num_inds, dtype=torch.float32):
-    assert (data.max() < num_inds).item()
-    placeholder = torch.zeros(data.shape + (num_inds,), device=data.device, dtype=dtype)
-    placeholder_shape = placeholder.shape
-    placeholder = placeholder.view(-1, num_inds)
-    placeholder[torch.arange(data.numel()), data.view(-1)] = 1
-    placeholder = placeholder.view(placeholder_shape)
-    return placeholder
+class LambdaLayer(nn.Module):
+    def __init__(self, function):
+        super(LambdaLayer, self).__init__()
+        self.function = function
+
+    def forward(self, inputs):
+        return self.function(inputs)
 
 
-def get_one_hot_numpy(data, num_inds, dtype=np.float32):
-    data = np.asarray(data)
-    assert data.max() < num_inds
-    placeholder = np.zeros(data.shape + (num_inds,), dtype=dtype)
-    placeholder_shape = placeholder.shape
-    placeholder = placeholder.reshape(-1, num_inds)
-    placeholder[np.arange(data.size), data.reshape(-1)] = 1
-    placeholder = placeholder.reshape(placeholder_shape)
-    return placeholder
+class RemoveDim(nn.Module):
+    def __init__(self, dim):
+        super(RemoveDim, self).__init__()
+        self.dim = dim
 
-
-surfnorm_kernel = None
-
-
-def depth_to_surface_normals(depth, surfnorm_scalar=256):
-    global surfnorm_kernel
-    if surfnorm_kernel is None:
-        surfnorm_kernel = torch.from_numpy(
-            np.array(
-                [
-                    [[1, 2, 1], [0, 0, 0], [-1, -2, -1]],
-                    [[1, 0, -1], [2, 0, -2], [1, 0, -1]],
-                    [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
-                ]
-            )
-        )[:, np.newaxis, ...].to(dtype=torch.float32, device=depth.device)
-    with torch.no_grad():
-        surface_normals = F.conv2d(depth, surfnorm_scalar * surfnorm_kernel, padding=1)
-        surface_normals[:, 2, ...] = 1
-        surface_normals = surface_normals / surface_normals.norm(dim=1, keepdim=True)
-    return surface_normals
-
-
-def multi_class_cross_entropy_loss(predictions, labels, reduction="mean", dim=-1):
-    # Predictions should be logits, labels should be probabilities.
-    loss = labels * F.log_softmax(predictions, dim=dim)
-    if reduction == "none":
-        return -1 * loss
-    elif reduction == "mean":
-        return -1 * torch.mean(loss) * predictions.shape[dim]  # mean across all dimensions except softmax one.
-    elif reduction == "sum":
-        return -1 * torch.sum(loss)
-    else:
-        raise NotImplementedError("Not known reduction type")
+    def forward(self, input_tensor):
+        return remove_dim(input_tensor, self.dim)
 
 
 class Flatten(nn.Module):
@@ -405,60 +340,36 @@ class DummyScope(nn.Module):
         return getattr(self, self.scope_list[0])(*input, **kwargs)
 
 
-class DataParallelFix(nn.DataParallel):
-    """
-    Temporary workaround for https://github.com/pytorch/pytorch/issues/15716.
-    """
+class BaseModel(nn.Module):
+    def __init__(self):
+        super(BaseModel, self).__init__()
+        self._device = None
+        self.saves = 0
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    @property
+    def device(self):
+        if self._device is None:
+            self._device = next(self.parameters()).device
+        return self._device
 
-        self._replicas = None
-        self._outputs = None
+    def to(self, *args, **kwargs):
+        self._device = None
+        model = super(BaseModel, self).to(*args, **kwargs)
+        device = self.device
+        return model
 
-    def forward(self, *inputs, **kwargs):
-        if not self.device_ids:
-            return self.module(*inputs, **kwargs)
+    @property
+    def name(self):
+        return type(self).__name__
 
-        for t in chain(self.module.parameters(), self.module.buffers()):
-            if t.device != self.src_device_obj:
-                raise RuntimeError(
-                    "module must have its parameters and buffers "
-                    "on device {} (device_ids[0]) but found one of "
-                    "them on device: {}".format(self.src_device_obj, t.device)
-                )
-
-        inputs, kwargs = self.scatter(inputs, kwargs, self.device_ids)
-        if len(self.device_ids) == 1:
-            return self.module(*inputs[0], **kwargs[0])
-
-        self._replicas = self.replicate(self.module, self.device_ids[: len(inputs)])
-        self._outputs = self.parallel_apply(self._replicas, inputs, kwargs)
-
-        return self.gather(self._outputs, self.output_device)
+    def restore(self, checkpoint_dir, saved_variable_prefix=None, new_variable_prefix=None, skip_filter=None) -> int:
+        iteration = restore_from_folder(
+            self, os.path.join(checkpoint_dir, "*"), saved_variable_prefix, new_variable_prefix, skip_filter
+        )
+        return iteration
 
 
-def get_data_parallel(module, device_ids):
-    if isinstance(device_ids, str):
-        device_ids = [int(device_id.strip()) for device_id in device_ids.split(",")]
-    if device_ids is None or len(device_ids) == 1:
-        return DummyScope(module, ["module"])
-    else:
-        print("Torch using", len(device_ids), "GPUs", device_ids)
-        return nn.DataParallel(module, device_ids=device_ids)
-
-
-def reset_module(module):
-    module_list = [sub_mod for sub_mod in module.modules()]
-    ss = 0
-    while ss < len(module_list):
-        sub_mod = module_list[ss]
-        if hasattr(sub_mod, "reset_parameters"):
-            sub_mod.reset_parameters()
-            ss += len([_ for _ in sub_mod.modules()])
-        else:
-            ss += 1
-
+########## Data/Preprocessing Utils ##########
 
 def fix_broadcast(input1, input2):
     original_shape1 = input1.shape
@@ -588,35 +499,6 @@ class ToTensor(object):
             return img
 
 
-class BaseModel(nn.Module):
-    def __init__(self):
-        super(BaseModel, self).__init__()
-        self._device = None
-        self.saves = 0
-
-    @property
-    def device(self):
-        if self._device is None:
-            self._device = next(self.parameters()).device
-        return self._device
-
-    def to(self, *args, **kwargs):
-        self._device = None
-        model = super(BaseModel, self).to(*args, **kwargs)
-        device = self.device
-        return model
-
-    @property
-    def name(self):
-        return type(self).__name__
-
-    def restore(self, checkpoint_dir, saved_variable_prefix=None, new_variable_prefix=None, skip_filter=None) -> int:
-        iteration = restore_from_folder(
-            self, os.path.join(checkpoint_dir, "*"), saved_variable_prefix, new_variable_prefix, skip_filter
-        )
-        return iteration
-
-
 class IndexWrapperDataset(Dataset):
     def __init__(self, other_dataset: Dataset):
         self.other_dataset = other_dataset
@@ -635,6 +517,145 @@ class IndexWrapperDataset(Dataset):
         return result, item
 
 
-class Identity(nn.Module):
-    def forward(self, data):
-        return data
+########## Other ##########
+
+class DataParallelFix(nn.DataParallel):
+    """
+    Temporary workaround for https://github.com/pytorch/pytorch/issues/15716.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._replicas = None
+        self._outputs = None
+
+    def forward(self, *inputs, **kwargs):
+        if not self.device_ids:
+            return self.module(*inputs, **kwargs)
+
+        for t in chain(self.module.parameters(), self.module.buffers()):
+            if t.device != self.src_device_obj:
+                raise RuntimeError(
+                    "module must have its parameters and buffers "
+                    "on device {} (device_ids[0]) but found one of "
+                    "them on device: {}".format(self.src_device_obj, t.device)
+                )
+
+        inputs, kwargs = self.scatter(inputs, kwargs, self.device_ids)
+        if len(self.device_ids) == 1:
+            return self.module(*inputs[0], **kwargs[0])
+
+        self._replicas = self.replicate(self.module, self.device_ids[: len(inputs)])
+        self._outputs = self.parallel_apply(self._replicas, inputs, kwargs)
+
+        return self.gather(self._outputs, self.output_device)
+
+
+def get_data_parallel(module, device_ids):
+    if isinstance(device_ids, str):
+        device_ids = [int(device_id.strip()) for device_id in device_ids.split(",")]
+    if device_ids is None or len(device_ids) == 1:
+        return DummyScope(module, ["module"])
+    else:
+        print("Torch using", len(device_ids), "GPUs", device_ids)
+        return nn.DataParallel(module, device_ids=device_ids)
+
+
+def detatch_recursive(h):
+    """Wraps hidden states in new Tensors, to detach them from their history."""
+    if isinstance(h, torch.Tensor):
+        return h.detach()
+    else:
+        return tuple(detatch_recursive(v) for v in h)
+
+
+def weighted_loss(loss_function_output, weights, reduction="mean"):
+    if isinstance(weights, numbers.Number):
+        if reduction == "mean":
+            return weights * torch.mean(loss_function_output)
+        elif reduction == "sum":
+            return weights * torch.sum(loss_function_output)
+        else:
+            return weights * loss_function_output
+
+    elif weights.dtype == torch.uint8 and reduction != "none":
+        if reduction == "mean":
+            return torch.mean(torch.masked_select(loss_function_output, weights))
+        else:
+            return torch.sum(torch.masked_select(loss_function_output, weights))
+    else:
+        if reduction == "mean":
+            return torch.mean(loss_function_output * weights)
+        elif reduction == "sum":
+            return torch.sum(loss_function_output * weights)
+        else:
+            return loss_function_output * weights
+
+
+def get_one_hot(data, num_inds, dtype=torch.float32):
+    assert (data.max() < num_inds).item()
+    placeholder = torch.zeros(data.shape + (num_inds,), device=data.device, dtype=dtype)
+    placeholder_shape = placeholder.shape
+    placeholder = placeholder.view(-1, num_inds)
+    placeholder[torch.arange(data.numel()), data.view(-1)] = 1
+    placeholder = placeholder.view(placeholder_shape)
+    return placeholder
+
+
+def get_one_hot_numpy(data, num_inds, dtype=np.float32):
+    data = np.asarray(data)
+    assert data.max() < num_inds
+    placeholder = np.zeros(data.shape + (num_inds,), dtype=dtype)
+    placeholder_shape = placeholder.shape
+    placeholder = placeholder.reshape(-1, num_inds)
+    placeholder[np.arange(data.size), data.reshape(-1)] = 1
+    placeholder = placeholder.reshape(placeholder_shape)
+    return placeholder
+
+
+surfnorm_kernel = None
+
+
+def depth_to_surface_normals(depth, surfnorm_scalar=256):
+    global surfnorm_kernel
+    if surfnorm_kernel is None:
+        surfnorm_kernel = torch.from_numpy(
+            np.array(
+                [
+                    [[1, 2, 1], [0, 0, 0], [-1, -2, -1]],
+                    [[1, 0, -1], [2, 0, -2], [1, 0, -1]],
+                    [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+                ]
+            )
+        )[:, np.newaxis, ...].to(dtype=torch.float32, device=depth.device)
+    with torch.no_grad():
+        surface_normals = F.conv2d(depth, surfnorm_scalar * surfnorm_kernel, padding=1)
+        surface_normals[:, 2, ...] = 1
+        surface_normals = surface_normals / surface_normals.norm(dim=1, keepdim=True)
+    return surface_normals
+
+
+def multi_class_cross_entropy_loss(predictions, labels, reduction="mean", dim=-1):
+    # Predictions should be logits, labels should be probabilities.
+    loss = labels * F.log_softmax(predictions, dim=dim)
+    if reduction == "none":
+        return -1 * loss
+    elif reduction == "mean":
+        return -1 * torch.mean(loss) * predictions.shape[dim]  # mean across all dimensions except softmax one.
+    elif reduction == "sum":
+        return -1 * torch.sum(loss)
+    else:
+        raise NotImplementedError("Not known reduction type")
+
+
+def reset_module(module):
+    module_list = [sub_mod for sub_mod in module.modules()]
+    ss = 0
+    while ss < len(module_list):
+        sub_mod = module_list[ss]
+        if hasattr(sub_mod, "reset_parameters"):
+            sub_mod.reset_parameters()
+            ss += len([_ for _ in sub_mod.modules()])
+        else:
+            ss += 1
