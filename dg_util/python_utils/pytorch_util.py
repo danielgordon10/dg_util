@@ -1,4 +1,5 @@
 import glob
+import itertools
 import numbers
 import os
 import re
@@ -295,6 +296,35 @@ def from_numpy(np_array):
             from_numpy_warn[np.str_] = True
         return np_array
     return torch.from_numpy(np_array)
+
+
+def stack_dicts_in_list(dicts, axis=0, concat=False):
+    keys = set(itertools.chain.from_iterable(dict.keys() for dict in dicts))
+    stacked_dict = {}
+    for key in keys:
+        vals = [dict[key] for dict in dicts if key in dict]
+        if len(vals) == 1:
+            if concat:
+                vals = vals[0]
+            else:
+                vals = vals[0]
+                if isinstance(vals, np.ndarray):
+                    vals = np.expand_dims(vals, axis)
+                elif isinstance(vals, torch.Tensor):
+                    vals.unsqueeze_(axis)
+        else:
+            if isinstance(vals[0], np.ndarray):
+                if concat:
+                    vals = np.concatenate(vals, axis=axis)
+                else:
+                    vals = np.stack(vals, axis=axis)
+            elif isinstance(vals[0], torch.Tensor):
+                if concat:
+                    vals = torch.cat(vals, dim=axis)
+                else:
+                    vals = torch.stack(vals, dim=axis)
+        stacked_dict[key] = vals
+    return stacked_dict
 
 
 ############### Layers ###############

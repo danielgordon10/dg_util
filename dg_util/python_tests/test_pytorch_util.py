@@ -134,3 +134,113 @@ def test_lambda_layer():
     (2 * output1.mean() + 2 * output2.mean()).backward()
     assert torch.allclose(data1.grad, data2.grad)
     assert data1.grad.abs().sum() > 0
+
+
+def test_stack_dicts_in_list():
+    dict1 = {'key1': np.random.random((10, 40)),
+             'key2': np.random.random((20, 30))
+             }
+    dict2 = {'key1': np.random.random((10, 40)),
+             'key3': np.random.random((20, 30))
+             }
+    output = pt_util.stack_dicts_in_list([dict1, dict2], 0, concat=True)
+    assert len(output) == 3
+    assert output['key1'].shape == (20, 40)
+    assert output['key2'].shape == (20, 30)
+    assert output['key3'].shape == (20, 30)
+
+    orig_val = dict1['key2'].copy()
+
+    dict1['key2'][:] = 0
+    assert np.all(output['key2'] == 0)
+    dict1['key2'][:] = orig_val
+
+    output = pt_util.stack_dicts_in_list([dict1, dict2], 0, concat=False)
+    assert len(output) == 3
+    assert output['key1'].shape == (2, 10, 40)
+    assert output['key2'].shape == (1, 20, 30)
+    assert output['key3'].shape == (1, 20, 30)
+
+    dict1['key2'][:] = 0
+    assert np.all(output['key2'] == 0)
+    dict1['key2'][:] = orig_val
+
+    dict1 = {'key1': np.random.random((10, 40)),
+             'key2': np.random.random((20, 30))
+             }
+    dict2 = {'key1': np.random.random((10, 40)),
+             'key3': np.random.random((20, 30))
+             }
+    output = pt_util.stack_dicts_in_list([dict1, dict2], 1, concat=True)
+    assert len(output) == 3
+    assert output['key1'].shape == (10, 80)
+    assert output['key2'].shape == (20, 30)
+    assert output['key3'].shape == (20, 30)
+
+    orig_val = dict1['key2'].copy()
+
+    dict1['key2'][:] = 0
+    assert np.all(output['key2'] == 0)
+    dict1['key2'][:] = orig_val
+
+    output = pt_util.stack_dicts_in_list([dict1, dict2], 1, concat=False)
+    assert len(output) == 3
+    assert output['key1'].shape == (10, 2, 40)
+    assert output['key2'].shape == (20, 1, 30)
+    assert output['key3'].shape == (20, 1, 30)
+
+    dict1['key2'][:] = 0
+    assert np.all(output['key2'] == 0)
+    dict1['key2'][:] = orig_val
+
+    dict1 = {'key1': np.random.random((10, 40)),
+             'key2': np.random.random((20, 30))
+             }
+    dict2 = {'key1': np.random.random((20, 40)),
+             'key3': np.random.random((20, 30))
+             }
+    output = pt_util.stack_dicts_in_list([dict1, dict2], 0, concat=True)
+    assert len(output) == 3
+    assert output['key1'].shape == (30, 40)
+    assert output['key2'].shape == (20, 30)
+    assert output['key3'].shape == (20, 30)
+
+    orig_val = dict1['key2'].copy()
+
+    dict1['key2'][:] = 0
+    assert np.all(output['key2'] == 0)
+    dict1['key2'][:] = orig_val
+
+    try:
+        output = pt_util.stack_dicts_in_list([dict1, dict2], 0, concat=False)
+        raise AssertionError('Should not be possible to stack')
+    except ValueError:
+        pass
+
+    dict1 = {'key1': torch.rand((10, 40)),
+             'key2': torch.rand((20, 30))
+             }
+    dict2 = {'key1': torch.rand((10, 40)),
+             'key3': torch.rand((20, 30))
+             }
+    output = pt_util.stack_dicts_in_list([dict1, dict2], 0, concat=True)
+    assert len(output) == 3
+    assert output['key1'].shape == (20, 40)
+    assert output['key2'].shape == (20, 30)
+    assert output['key3'].shape == (20, 30)
+
+    orig_val = dict1['key2'].clone().detach()
+
+    dict1['key2'][:] = 0
+    assert torch.all(output['key2'] == 0)
+    dict1['key2'][:] = orig_val
+
+    output = pt_util.stack_dicts_in_list([dict1, dict2], 0, concat=False)
+    assert len(output) == 3
+    assert output['key1'].shape == (2, 10, 40)
+    assert output['key2'].shape == (1, 20, 30)
+    assert output['key3'].shape == (1, 20, 30)
+
+    dict1['key2'][:] = 0
+    assert torch.all(output['key2'] == 0)
+    dict1['key2'][:] = orig_val
