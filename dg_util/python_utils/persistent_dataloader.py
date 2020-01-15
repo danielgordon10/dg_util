@@ -8,10 +8,17 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 from torch._six import queue
-from torch.utils.data import _utils
-from torch.utils.data.dataloader import DataLoader, _MultiProcessingDataLoaderIter, _DatasetKind
+from torch.utils.data import _utils, IterableDataset, Sampler, SequentialSampler, RandomSampler, BatchSampler
+from torch.utils.data.dataloader import (
+    DataLoader,
+    _MultiProcessingDataLoaderIter,
+    _DatasetKind,
+    _BaseDataLoaderIter,
+    _InfiniteConstantSampler,
+)
 
 
+# CHANGED PART
 class PersistentDataLoader(DataLoader):
     def __init__(
         self,
@@ -29,24 +36,237 @@ class PersistentDataLoader(DataLoader):
         multiprocessing_context=None,
         device=None,
     ):
-        super(PersistentDataLoader, self).__init__(
-            dataset,
-            batch_size,
-            shuffle,
-            sampler,
-            batch_sampler,
-            num_workers,
-            collate_fn,
-            pin_memory,
-            drop_last,
-            timeout,
-            worker_init_fn,
-            multiprocessing_context,
-        )
-        self.iterator = PersistentDataLoaderIter(self, device)
+        if dataset is not None:
+            super(PersistentDataLoader, self).__init__(
+                dataset,
+                batch_size,
+                shuffle,
+                sampler,
+                batch_sampler,
+                num_workers,
+                collate_fn,
+                pin_memory,
+                drop_last,
+                timeout,
+                worker_init_fn,
+                multiprocessing_context,
+            )
+            if self.num_workers == 0:
+                self.iterator = _SingleProcessDataLoaderIter(self)
+            else:
+                self.iterator = PersistentDataLoaderIter(self, device)
+        else:
+            # Assert that all non-used args are default
+            assert batch_size == 1
+            assert not shuffle
+            assert sampler is None
+            assert batch_sampler is None
+            assert collate_fn is None
+            assert drop_last is False
+            assert worker_init_fn is None
+
+            self.dataset = None
+            self.dataset_kind = None
+            self.sampler = None
+            self.batch_sampler = BatchSampler(SequentialSampler(list(range(1000))), 1, False)
+            self.drop_last = False
+            self.collate_fn = None
+            self.worker_init_fn = None
+
+            self.setup(num_workers, pin_memory, timeout, multiprocessing_context)
+            if self.num_workers == 0:
+                self.iterator = None
+            else:
+                self.iterator = PersistentDataLoaderIter(self, device)
+
+    def setup(self, num_workers=0, pin_memory=False, timeout=0, multiprocessing_context=None):
+
+        torch._C._log_api_usage_once("python.data_loader")
+
+        if num_workers < 0:
+            raise ValueError(
+                "num_workers option should be non-negative; " "use num_workers=0 to disable multiprocessing."
+            )
+
+        if timeout < 0:
+            raise ValueError("timeout option should be non-negative")
+
+        self.num_workers = num_workers
+        self.pin_memory = pin_memory
+        self.timeout = timeout
+        self.multiprocessing_context = multiprocessing_context
+
+        # Arg-check dataset related before checking samplers because we want to
+        # tell users that iterable-style datasets are incompatible with custom
+        # samplers first, so that they don't learn that this combo doesn't work
+        # after spending time fixing the custom sampler errors.
+        self.__initialized = True
+
+    # CHANGED PART
+    def set_dataset(
+        self,
+        dataset,
+        batch_size=1,
+        shuffle=False,
+        sampler=None,
+        batch_sampler=None,
+        collate_fn=None,
+        drop_last=False,
+        worker_init_fn=None,
+    ):
+        torch._C._log_api_usage_once("python.data_loader")
+
+        self.dataset = dataset
+        self.worker_init_fn = worker_init_fn
+
+        # Arg-check dataset related before checking samplers because we want to
+        # tell users that iterable-style datasets are incompatible with custom
+        # samplers first, so that they don't learn that this combo doesn't work
+        # after spending time fixing the custom sampler errors.
+        if isinstance(dataset, IterableDataset):
+            self.dataset_kind = _DatasetKind.Iterable
+            # NOTE [ Custom Samplers and `IterableDataset` ]
+            #
+            # `IterableDataset` does not support custom `batch_sampler` or
+            # `sampler` since the key is irrelevant (unless we support
+            # generator-style dataset one day...).
+            #
+            # For `sampler`, we always create a dummy sampler. This is an
+            # infinite sampler even when the dataset may have an implemented
+            # finite `__len__` because in multi-process data loading, naive
+            # settings will return duplicated data (which may be desired), and
+            # thus using a sampler with length matching that of dataset will
+            # cause data lost (you may have duplicates of the first couple
+            # batches, but never see anything afterwards). Therefore,
+            # `Iterabledataset` always uses an infinite sampler, an instance of
+            # `_InfiniteConstantSampler` defined above.
+            #
+            # A custom `batch_sampler` essentially only controls the batch size.
+            # However, it is unclear how useful it would be since an iterable-style
+            # dataset can handle that within itself. Moreover, it is pointless
+            # in multi-process data loading as the assignment order of batches
+            # to workers is an implementation detail so users can not control
+            # how to batchify each worker's iterable. Thus, we disable this
+            # option. If this turns out to be useful in future, we can re-enable
+            # this, and support custom samplers that specify the assignments to
+            # specific workers.
+            if shuffle is not False:
+                raise ValueError(
+                    "DataLoader with IterableDataset: expected unspecified "
+                    "shuffle option, but got shuffle={}".format(shuffle)
+                )
+            elif sampler is not None:
+                # See NOTE [ Custom Samplers and IterableDataset ]
+                raise ValueError(
+                    "DataLoader with IterableDataset: expected unspecified "
+                    "sampler option, but got sampler={}".format(sampler)
+                )
+            elif batch_sampler is not None:
+                # See NOTE [ Custom Samplers and IterableDataset ]
+                raise ValueError(
+                    "DataLoader with IterableDataset: expected unspecified "
+                    "batch_sampler option, but got batch_sampler={}".format(batch_sampler)
+                )
+        else:
+            self.dataset_kind = _DatasetKind.Map
+
+        if sampler is not None and shuffle:
+            raise ValueError("sampler option is mutually exclusive with " "shuffle")
+
+        if batch_sampler is not None:
+            # auto_collation with custom batch_sampler
+            if batch_size != 1 or shuffle or sampler is not None or drop_last:
+                raise ValueError(
+                    "batch_sampler option is mutually exclusive " "with batch_size, shuffle, sampler, and " "drop_last"
+                )
+            batch_size = None
+            drop_last = False
+        elif batch_size is None:
+            # no auto_collation
+            if shuffle or sampler is not None or drop_last:
+                raise ValueError(
+                    "batch_size=None option disables auto-batching "
+                    "and is mutually exclusive with "
+                    "shuffle, sampler, and drop_last"
+                )
+
+        if sampler is None:  # give default samplers
+            if self.dataset_kind == _DatasetKind.Iterable:
+                # See NOTE [ Custom Samplers and IterableDataset ]
+                sampler = _InfiniteConstantSampler()
+            else:  # map-style
+                if shuffle:
+                    sampler = RandomSampler(dataset)
+                else:
+                    sampler = SequentialSampler(dataset)
+
+        if batch_size is not None and batch_sampler is None:
+            # auto_collation without custom batch_sampler
+            batch_sampler = BatchSampler(sampler, batch_size, drop_last)
+
+        self.batch_size = batch_size
+        self.drop_last = drop_last
+        self.sampler = sampler
+        self.batch_sampler = batch_sampler
+
+        if collate_fn is None:
+            if self._auto_collation:
+                collate_fn = _utils.collate.default_collate
+            else:
+                collate_fn = _utils.collate.default_convert
+
+        self.collate_fn = collate_fn
+
+        if self.num_workers == 0:
+            self.iterator = _SingleProcessDataLoaderIter(self)
+        else:
+            self.iterator.set_dataset(
+                self.dataset_kind,
+                dataset,
+                self._index_sampler,
+                collate_fn,
+                drop_last,
+                worker_init_fn,
+                self._auto_collation,
+            )
 
     def __iter__(self):
         return self.iterator
+
+
+class _SingleProcessDataLoaderIter(_BaseDataLoaderIter):
+    def __init__(self, loader):
+        super(_SingleProcessDataLoaderIter, self).__init__(loader)
+        assert self.timeout == 0
+        assert self.num_workers == 0
+
+        self.dataset_fetcher = _DatasetKind.create_fetcher(
+            self.dataset_kind, self.dataset, self.auto_collation, self.collate_fn, self.drop_last
+        )
+
+    def __next__(self):
+        try:
+            index = self._next_index()  # may raise StopIteration
+        except StopIteration:
+            self.sampler_iter = iter(self.index_sampler)
+            raise StopIteration
+
+        try:
+            data = self.dataset_fetcher.fetch(index)  # may raise StopIteration
+        except StopIteration:
+            self.dataset_fetcher = _DatasetKind.create_fetcher(
+                self.dataset_kind, self.dataset, self.auto_collation, self.collate_fn, self.drop_last
+            )
+            raise StopIteration
+
+        if self.pin_memory:
+            data = _utils.pin_memory.pin_memory(data)
+        return data
+
+    next = __next__  # Python 2 compatibility
+
+
+# END CHANGED PART
 
 
 class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
@@ -82,26 +302,63 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
         # contains all `True`s if not using an iterable-style dataset
         # (i.e., if kind != Iterable).
         self.workers_status = []
+
+        # CHANGED PART
+        def delayed_worker_loop(dataset_queue, index_queue, data_queue, done_event, seed, worker_id, num_workers):
+            (dataset_kind, dataset, auto_collation, collate_fn, drop_last, worker_init_fn) = dataset_queue.get()
+            _utils.worker._worker_loop(
+                dataset_kind,
+                dataset,
+                index_queue,
+                data_queue,
+                done_event,
+                auto_collation,
+                collate_fn,
+                drop_last,
+                seed,
+                worker_init_fn,
+                worker_id,
+                num_workers,
+            )
+
+        self.dataset_queue = multiprocessing_context.Queue()
+
         for i in range(self.num_workers):
             index_queue = multiprocessing_context.Queue()
             # index_queue.cancel_join_thread()
-            w = multiprocessing_context.Process(
-                target=_utils.worker._worker_loop,
-                args=(
-                    self.dataset_kind,
-                    self.dataset,
-                    index_queue,
-                    self.worker_result_queue,
-                    self.workers_done_event,
-                    self.auto_collation,
-                    self.collate_fn,
-                    self.drop_last,
-                    self.base_seed + i,
-                    self.worker_init_fn,
-                    i,
-                    self.num_workers,
-                ),
-            )
+            if loader.dataset is None:
+                w = multiprocessing_context.Process(
+                    target=delayed_worker_loop,
+                    args=(
+                        self.dataset_queue,
+                        index_queue,
+                        self.worker_result_queue,
+                        self.workers_done_event,
+                        self.base_seed + i,
+                        i,
+                        self.num_workers,
+                    ),
+                )
+                pass
+            else:
+                w = multiprocessing_context.Process(
+                    target=_utils.worker._worker_loop,
+                    args=(
+                        self.dataset_kind,
+                        self.dataset,
+                        index_queue,
+                        self.worker_result_queue,
+                        self.workers_done_event,
+                        self.auto_collation,
+                        self.collate_fn,
+                        self.drop_last,
+                        self.base_seed + i,
+                        self.worker_init_fn,
+                        i,
+                        self.num_workers,
+                    ),
+                )
+            # END CHANGED PART
             w.daemon = True
             # NB: Process.start() actually take some time as it needs to
             #     start a process and pass the arguments over via a pipe.
@@ -117,9 +374,10 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
         if self.pin_memory:
             self.pin_memory_thread_done_event = threading.Event()
             self.data_queue = queue.Queue()
-            ###### CHANGED PART
+            # CHANGED PART
             if device is None:
                 device = torch.cuda.current_device()
+            # END CHANGED PART
             pin_memory_thread = threading.Thread(
                 target=_utils.pin_memory._pin_memory_loop,
                 args=(self.worker_result_queue, self.data_queue, device, self.pin_memory_thread_done_event),
@@ -136,9 +394,24 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
         _utils.signal_handling._set_SIGCHLD_handler()
         self.worker_pids_set = True
 
+        # CHANGED PART
+        if loader.dataset is not None:
+            # prime the prefetch loop
+            for _ in range(2 * self.num_workers):
+                self._try_put_index()
+        # END CHANGED PART
+
+    # CHANGED PART
+    def set_dataset(self, dataset_kind, dataset, index_sampler, collate_fn, drop_last, worker_init_fn, auto_collation):
+        self.index_sampler = index_sampler
+        self.sampler_iter = iter(self.index_sampler)
+        for _ in range(self.num_workers):
+            self.dataset_queue.put((dataset_kind, dataset, auto_collation, collate_fn, drop_last, worker_init_fn))
         # prime the prefetch loop
         for _ in range(2 * self.num_workers):
             self._try_put_index()
+
+    # END CHANGED PART
 
     def __next__(self):
         while True:
@@ -158,13 +431,14 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
                 self.rcvd_idx += 1
             else:
                 # no valid `self.rcvd_idx` is found (i.e., didn't break)
-                ######## CHHANGED PART
+                # CHANGED PART
                 self.sampler_iter = iter(self.index_sampler)
                 for _ in range(2 * self.num_workers):
                     self._try_put_index()
                 # self._shutdown_workers()
                 # Still indicate end of epoch
                 raise StopIteration
+                # END CHANGED PART
 
             # Now `self.rcvd_idx` is the batch index we want to fetch
 
