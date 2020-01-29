@@ -90,14 +90,11 @@ def tsne_image(
     if labels is not None:
         circles = np.full(canvas.shape, 255, dtype=np.uint8)
         label_classes = np.unique(labels)
-    x_coords = np.linspace(x_min, x_max, res_x)
-    y_coords = np.linspace(y_min, y_max, res_y)
+    xx = np.floor((xx - x_min) / (x_max - x_min) * res_x).astype(np.int64)
+    yy = np.floor((yy - y_min) / (y_max - y_min) * res_y).astype(np.int64)
     im_ind = 0
-    inds = list(range(len(images)))
-    for ii, x, y, image in zip(inds, xx, yy, images):
+    for x_idx, y_idx, image in zip(xx, yy, images):
         w, h = image.shape[:2]
-        x_idx = np.argmin((x - x_coords) ** 2)
-        y_idx = np.argmin((y - y_coords) ** 2)
         if labels is not None:
             center = (int(y_idx + h / 2.0), int(x_idx + w / 2.0))
             rr, cc = circle(center[1], center[0], point_radius)
