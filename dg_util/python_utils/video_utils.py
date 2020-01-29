@@ -110,11 +110,26 @@ def test_speeds(video: str, sample_rate: int) -> str:
         return "seek"
 
 
+def get_frames_by_time(video: str, start_time: int, end_time: int = -1, fps: int = 1, remove_video: bool = False):
+    assert os.path.exists(video)
+    vidcap = cv2.VideoCapture(video)
+    try:
+        vid_framerate = vidcap.get(cv2.CAP_PROP_FPS)
+    except:
+        # expect framerate of 30
+        vid_framerate = 30
+    start_frame = int(start_time * vid_framerate)
+    end_frame = int(end_time * vid_framerate)
+    sample_rate = int(vid_framerate / fps)
+    return get_frames(video, sample_rate, remove_video=remove_video, start_frame=start_frame, end_frame=end_frame)
+
+
 def get_frames(
     video: str, sample_rate: int, sample_method: str = None, remove_video: bool = False, max_frames: int = -1,
-        start_frame: int = -1
+        start_frame: int = -1, end_frame: int = -1
 ) -> List[np.ndarray]:
     assert sample_rate > 0
+    assert not((max_frames != -1) and (end_frame != -1))
     video_start_point = 0
     if start_frame > 0:
         video_start_point = start_frame
@@ -139,6 +154,7 @@ def get_frames(
         count = 0
         success = True
         t_start = time.time()
+        total_frames = end_frame - start_frame
         while success and (max_frames < 0 or len(frames) < max_frames):
             success, image = vidcap.read()
             if not success:
@@ -146,6 +162,8 @@ def get_frames(
             if count % sample_rate == 0:
                 frames.append(image[:, :, ::-1])
             count += 1
+            if count >= total_frames > 0:
+                break
         t_end = time.time()
         if DEBUG:
             print("total time", t_end - t_start)
@@ -157,13 +175,16 @@ def get_frames(
         success = True
         try:
             while success and (max_frames < 0 or len(frames) < max_frames):
-                vidcap.set(cv2.CAP_PROP_POS_FRAMES, (video_start_point + len(frames) * sample_rate) - 1)
+                frame_ind = (video_start_point + len(frames) * sample_rate) - 1
+                if end_frame > 0 and end_frame > frame_ind:
+                    break
+                vidcap.set(cv2.CAP_PROP_POS_FRAMES, frame_ind)
                 success, image = vidcap.read(1)
                 if not success:
                     break
                 frames.append(image[:, :, ::-1])
         except:
-            frames = get_frames(video, sample_rate, "read", remove_video)
+            frames = get_frames(video, sample_rate, "read", remove_video, max_frames, start_frame, end_frame)
         t_end = time.time()
         if DEBUG:
             print("total time", t_end - t_start)
@@ -969,5 +990,16 @@ def example(data_path):
 
 
 if __name__ == "__main__":
-    example('.')
+    #example('.')
     # search_youtube("apple", 100)
+    download_video('--7qK_w-g3Y', '/tmp')
+    #frames = get_frames('/tmp/--7qK_w-g3Y.mp4', sample_rate=5, start_frame=185 * 30, max_frames=int(10 * 30 / 6))
+    frames = get_frames_by_time('/tmp/--7qK_w-g3Y.mp4', start_time=3 * 60, end_time=3 * 60 + 30, fps=5)
+    print('num frames', len(frames))
+    import pdb
+    pdb.set_trace()
+    for frame in frames:
+        cv2.imshow('image', frame[:, :, ::-1])
+        cv2.waitKey(0)
+    pdb.set_trace()
+    cv2.waitKey(0)
