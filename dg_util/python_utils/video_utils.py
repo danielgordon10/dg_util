@@ -505,7 +505,7 @@ def download_video_ytdl(video_id: str, video_path: str = "data/videos") -> Optio
     if not os.path.exists(video_path):
         os.makedirs(video_path, exist_ok=True)
 
-    potential_file = glob.glob(os.path.join(video_path, video_id + "*"))
+    potential_file = glob.glob(os.path.join(video_path, video_id + ".mp4"))
     if len(potential_file) > 0:
         if os.stat(potential_file[0]).st_size == 0:
             return None
@@ -514,9 +514,9 @@ def download_video_ytdl(video_id: str, video_path: str = "data/videos") -> Optio
     t_start = time.time()
     if DEBUG:
         print("downloading")
-    out_video_path = os.path.join(video_path, video_id) + ".mp4"
     video = download_video_ytdl_helper(video_id, video_path)
-    if video is None:
+    if video is None or not os.path.exists(video):
+        print('download error for ', video_id)
         return None
     if os.stat(video).st_size == 0:
         print("Download failed for", video)
