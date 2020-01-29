@@ -111,11 +111,14 @@ def test_speeds(video: str, sample_rate: int) -> str:
 
 
 def get_frames(
-    video: str, sample_rate: int, sample_method: str = None, remove_video: bool = False, max_frames: int = -1
+    video: str, sample_rate: int, sample_method: str = None, remove_video: bool = False, max_frames: int = -1,
+        start_frame: int = -1
 ) -> List[np.ndarray]:
     assert sample_rate > 0
     video_start_point = 0
-    if max_frames > 0:
+    if start_frame > 0:
+        video_start_point = start_frame
+    if max_frames > 0 and video_start_point == 0:
         num_frames_in_video = count_frames(video)
         if num_frames_in_video == -1:
             video_start_point = 0
