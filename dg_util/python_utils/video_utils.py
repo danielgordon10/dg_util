@@ -118,6 +118,8 @@ def get_frames_by_time(video: str, start_time: int, end_time: int = -1, fps: int
     except:
         # expect framerate of 30
         vid_framerate = 30
+    finally:
+        vidcap.release()
     start_frame = int(start_time * vid_framerate)
     end_frame = int(end_time * vid_framerate)
     sample_rate = int(vid_framerate / fps)
@@ -176,7 +178,7 @@ def get_frames(
         try:
             while success and (max_frames < 0 or len(frames) < max_frames):
                 frame_ind = (video_start_point + len(frames) * sample_rate) - 1
-                if end_frame > 0 and end_frame > frame_ind:
+                if frame_ind > end_frame > 0:
                     break
                 vidcap.set(cv2.CAP_PROP_POS_FRAMES, frame_ind)
                 success, image = vidcap.read(1)
@@ -992,9 +994,10 @@ def example(data_path):
 if __name__ == "__main__":
     #example('.')
     # search_youtube("apple", 100)
-    download_video('--7qK_w-g3Y', '/tmp')
+    video_id = '--6bJUbfpnQ'
+    download_video(video_id, '/tmp')
     #frames = get_frames('/tmp/--7qK_w-g3Y.mp4', sample_rate=5, start_frame=185 * 30, max_frames=int(10 * 30 / 6))
-    frames = get_frames_by_time('/tmp/--7qK_w-g3Y.mp4', start_time=3 * 60, end_time=3 * 60 + 30, fps=5)
+    frames = get_frames_by_time('/tmp/' + video_id + '.mp4', start_time=10, end_time=15, fps=1)
     print('num frames', len(frames))
     import pdb
     pdb.set_trace()
