@@ -127,11 +127,16 @@ def get_frames_by_time(video: str, start_time: int, end_time: int = -1, fps: int
 
 
 def get_frames(
-    video: str, sample_rate: int, sample_method: str = None, remove_video: bool = False, max_frames: int = -1,
-        start_frame: int = -1, end_frame: int = -1
+    video: str,
+    sample_rate: int,
+    sample_method: str = None,
+    remove_video: bool = False,
+    max_frames: int = -1,
+    start_frame: int = -1,
+    end_frame: int = -1,
 ) -> List[np.ndarray]:
     assert sample_rate > 0
-    assert not((max_frames != -1) and (end_frame != -1))
+    assert not ((max_frames != -1) and (end_frame != -1))
     video_start_point = 0
     if start_frame > 0:
         video_start_point = start_frame
@@ -139,8 +144,8 @@ def get_frames(
         num_frames_in_video = count_frames(video)
         if num_frames_in_video == -1:
             video_start_point = 0
-        elif num_frames_in_video > max_frames:
-            video_start_point = random.randint(0, num_frames_in_video - max_frames)
+        elif num_frames_in_video > max_frames * sample_rate:
+            video_start_point = random.randint(0, num_frames_in_video - max_frames * sample_rate)
     frames = []
     if sample_method is None:
         sample_method = test_speeds(video, sample_rate)
@@ -469,7 +474,7 @@ def ydl_download(video_id, ydl_opts):
             return False
 
 
-def download_video_ytdl_helper(id, cache_path):
+def download_video_ytdl_helper(id, cache_path, cookie_path=None):
     """
     Given an ID, download the video using HQ settings. (might need to turn this down, idk)
 
@@ -477,11 +482,6 @@ def download_video_ytdl_helper(id, cache_path):
     :param cache_path: Where to download the video
     :return: The file that we downloaded things to
     """
-
-    # import shutil
-    # cookie_path = '/tmp/cookie_%s.txt' % time.time()
-    orig_cookie_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
-    # shutil.copy(orig_cookie_path, cookie_path)
 
     ydl_opts = {
         "quiet": True,
@@ -493,17 +493,17 @@ def download_video_ytdl_helper(id, cache_path):
         # "source_address": "0.0.0.0",
         "socket_timeout": 30,
         "youtube_include_dash_manifest": False,
-        "cookiefile": orig_cookie_path,
+        "cookiefile": cookie_path,
         "force-ipv4": True,
     }
     if ydl_download(id, ydl_opts):
-        # os.remove(cookie_path)
         return os.path.join(cache_path, f"{id}.mp4")
-    # os.remove(cookie_path)
     return None
 
 
-def download_video_ytdl(video_id: str, video_path: str = "data/videos") -> Optional[str]:
+def download_video_ytdl(
+    video_id: str, video_path: str = "data/videos", cookie_path: Optional[str] = None
+) -> Optional[str]:
     if not os.path.exists(video_path):
         os.makedirs(video_path, exist_ok=True)
 
@@ -516,9 +516,9 @@ def download_video_ytdl(video_id: str, video_path: str = "data/videos") -> Optio
     t_start = time.time()
     if DEBUG:
         print("downloading")
-    video = download_video_ytdl_helper(video_id, video_path)
+    video = download_video_ytdl_helper(video_id, video_path, cookie_path)
     if video is None or not os.path.exists(video):
-        print('download error for ', video_id)
+        print("download error for ", video_id)
         return None
     if os.stat(video).st_size == 0:
         print("Download failed for", video)
@@ -530,11 +530,11 @@ def download_video_ytdl(video_id: str, video_path: str = "data/videos") -> Optio
     return video
 
 
-def download_video(video_id: str, video_path: str = "data/videos") -> Optional[str]:
+def download_video(video_id: str, video_path: str = "data/videos", cookie_path: Optional[str] = None) -> Optional[str]:
     if USE_PYTUBE:
         return download_video_pytube(video_id, video_path)
     else:
-        return download_video_ytdl(video_id, video_path)
+        return download_video_ytdl(video_id, video_path, cookie_path)
 
 
 def filter_similar_frames(
@@ -717,14 +717,29 @@ def filter_using_flow(
 
 def filter_using_laplacian(frames: np.ndarray, return_inds=False) -> Union[np.ndarray, Tuple[np.ndarray, List[int]]]:
     assert isinstance(frames, np.ndarray)
-    new_frames = []
     small_frames = misc_util.resize(frames, (256, 256), height_channel=1, width_channel=2)
-    for ff in range(len(frames)):
-        # Filter out basically empty images
-        laplacian = np.max(np.abs(cv2.Laplacian(small_frames[ff], cv2.CV_16S)), axis=2)
-        laplacian = laplacian > 3
-        if laplacian.mean() > 0.4:
-            new_frames.append(ff)
+    small_frames = small_frames.transpose(1, 2, 3, 0).reshape(256, 256, -1)
+    small_frames_dim = small_frames.shape[-1]
+
+    if small_frames_dim > (512 // 3) * 3:
+        # Stupid opencv bug
+        laplacian = [
+            np.max(
+                np.abs(
+                    cv2.Laplacian(small_frames[:, :, start : start + (512 // 3) * 3], cv2.CV_16S).reshape(
+                        256, 256, 3, -1
+                    )
+                ),
+                axis=2,
+            )
+            for start in range(0, small_frames_dim, (512 // 3) * 3)
+        ]
+        laplacian = np.concatenate(laplacian, axis=-1)
+    else:
+        laplacian = np.max(np.abs(cv2.Laplacian(small_frames, cv2.CV_16S).reshape(256, 256, 3, -1)), axis=2)
+
+    laplacian = (laplacian > 3).mean(axis=(0, 1))
+    new_frames = np.where(laplacian > 0.4)[0]
     if return_inds:
         return frames[new_frames], new_frames
     else:
@@ -992,17 +1007,18 @@ def example(data_path):
 
 
 if __name__ == "__main__":
-    #example('.')
+    # example('.')
     # search_youtube("apple", 100)
-    video_id = '--6bJUbfpnQ'
-    download_video(video_id, '/tmp')
-    #frames = get_frames('/tmp/--7qK_w-g3Y.mp4', sample_rate=5, start_frame=185 * 30, max_frames=int(10 * 30 / 6))
-    frames = get_frames_by_time('/tmp/' + video_id + '.mp4', start_time=10, end_time=15, fps=1)
-    print('num frames', len(frames))
+    video_id = "--6bJUbfpnQ"
+    download_video(video_id, "/tmp")
+    # frames = get_frames('/tmp/--7qK_w-g3Y.mp4', sample_rate=5, start_frame=185 * 30, max_frames=int(10 * 30 / 6))
+    frames = get_frames_by_time("/tmp/" + video_id + ".mp4", start_time=10, end_time=15, fps=1)
+    print("num frames", len(frames))
     import pdb
+
     pdb.set_trace()
     for frame in frames:
-        cv2.imshow('image', frame[:, :, ::-1])
+        cv2.imshow("image", frame[:, :, ::-1])
         cv2.waitKey(0)
     pdb.set_trace()
     cv2.waitKey(0)

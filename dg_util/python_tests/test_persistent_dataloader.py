@@ -7,6 +7,7 @@ from dg_util.python_utils.persistent_dataloader import PersistentDataLoader
 import pdb
 from torch.utils.data._utils.collate import default_collate
 
+
 class DummyDataset(Dataset):
     def __init__(self, data_size):
         super(DummyDataset, self).__init__()
@@ -24,7 +25,7 @@ class DummyDataset(Dataset):
         self = torch.utils.data.get_worker_info().dataset
         self.worker_id = worker_id
         self.seed = torch.initial_seed()
-        print('worker_init', type(self).__name__, 'worker', self.worker_id, 'seed', self.seed)
+        print("worker_init", type(self).__name__, "worker", self.worker_id, "seed", self.seed)
 
     @staticmethod
     def collate_fn(batch):
@@ -90,7 +91,7 @@ def _test_persistent_data_loader(
             assert len(data) == batch_size
         if not shuffle:
             gt_data = torch.arange((counts - 1) * batch_size, counts * batch_size, dtype=torch.int64)
-            assert torch.all(data == gt_data[:len(data)])
+            assert torch.all(data == gt_data[: len(data)])
 
     if drop_last:
         assert num_data_points == len(dataset) // batch_size * batch_size
@@ -107,14 +108,11 @@ def _test_persistent_data_loader(
 
 
 def test_persistent_dataloader_normal():
-    _test_persistent_data_loader(
-        10, 6, 4, shuffle=True, delayed_start=False, drop_last=True,
-    )
+    _test_persistent_data_loader(10, 6, 4, shuffle=True, delayed_start=False, drop_last=True)
+
 
 def test_persistent_dataloader_single_proc():
-    _test_persistent_data_loader(
-        10, 6, 0, shuffle=True, delayed_start=False, drop_last=True,
-    )
+    _test_persistent_data_loader(10, 6, 0, shuffle=True, delayed_start=False, drop_last=True)
 
 
 def test_persistent_data_loader():
@@ -127,6 +125,12 @@ def test_persistent_data_loader():
                         for wif in [None, DummyDataset.worker_init_fn]:
                             for cof in [None, DummyDataset.collate_fn]:
                                 _test_persistent_data_loader(
-                                    10, batch_size, num_procs, shuffle=shuffle, delayed_start=delayed_start, drop_last=drop_last,
-                                    worker_init_fn=wif, collate_fn=cof,
+                                    10,
+                                    batch_size,
+                                    num_procs,
+                                    shuffle=shuffle,
+                                    delayed_start=delayed_start,
+                                    drop_last=drop_last,
+                                    worker_init_fn=wif,
+                                    collate_fn=cof,
                                 )
