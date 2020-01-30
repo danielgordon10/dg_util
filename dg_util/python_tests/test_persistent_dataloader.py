@@ -106,7 +106,18 @@ def _test_persistent_data_loader(
     assert counts > 0
 
 
-def test_persistent_data_loader_zero_process():
+def test_persistent_dataloader_normal():
+    _test_persistent_data_loader(
+        10, 6, 4, shuffle=True, delayed_start=False, drop_last=True,
+    )
+
+def test_persistent_dataloader_single_proc():
+    _test_persistent_data_loader(
+        10, 6, 0, shuffle=True, delayed_start=False, drop_last=True,
+    )
+
+
+def test_persistent_data_loader():
     tf = [True, False]
     for batch_size in range(1, 6):
         for drop_last in tf:
@@ -116,6 +127,6 @@ def test_persistent_data_loader_zero_process():
                         for wif in [None, DummyDataset.worker_init_fn]:
                             for cof in [None, DummyDataset.collate_fn]:
                                 _test_persistent_data_loader(
-                                    5, batch_size, num_procs, shuffle=shuffle, delayed_start=delayed_start, drop_last=drop_last,
+                                    10, batch_size, num_procs, shuffle=shuffle, delayed_start=delayed_start, drop_last=drop_last,
                                     worker_init_fn=wif, collate_fn=cof,
                                 )

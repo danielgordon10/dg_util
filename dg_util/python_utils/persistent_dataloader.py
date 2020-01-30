@@ -66,7 +66,8 @@ class PersistentDataLoader(DataLoader):
             assert worker_init_fn is None
 
             self.dataset = None
-            self.dataset_kind = None
+            self._dataset_kind = None
+            self._IterableDataset_len_called = None
             self.sampler = None
             self.batch_sampler = BatchSampler(SequentialSampler(list(range(1000))), 1, False)
             self.drop_last = False
@@ -124,7 +125,7 @@ class PersistentDataLoader(DataLoader):
         # samplers first, so that they don't learn that this combo doesn't work
         # after spending time fixing the custom sampler errors.
         if isinstance(dataset, IterableDataset):
-            self.dataset_kind = _DatasetKind.Iterable
+            self._dataset_kind = _DatasetKind.Iterable
             # NOTE [ Custom Samplers and `IterableDataset` ]
             #
             # `IterableDataset` does not support custom `batch_sampler` or
@@ -145,11 +146,11 @@ class PersistentDataLoader(DataLoader):
             # However, it is unclear how useful it would be since an iterable-style
             # dataset can handle that within itself. Moreover, it is pointless
             # in multi-process data loading as the assignment order of batches
-            # to workers is an implementation detail so users can not control
+            # to _workers is an implementation detail so users can not control
             # how to batchify each worker's iterable. Thus, we disable this
             # option. If this turns out to be useful in future, we can re-enable
             # this, and support custom samplers that specify the assignments to
-            # specific workers.
+            # specific _workers.
             if shuffle is not False:
                 raise ValueError(
                     "DataLoader with IterableDataset: expected unspecified "
@@ -168,7 +169,7 @@ class PersistentDataLoader(DataLoader):
                     "batch_sampler option, but got batch_sampler={}".format(batch_sampler)
                 )
         else:
-            self.dataset_kind = _DatasetKind.Map
+            self._dataset_kind = _DatasetKind.Map
 
         if sampler is not None and shuffle:
             raise ValueError("sampler option is mutually exclusive with " "shuffle")
@@ -191,7 +192,7 @@ class PersistentDataLoader(DataLoader):
                 )
 
         if sampler is None:  # give default samplers
-            if self.dataset_kind == _DatasetKind.Iterable:
+            if self._dataset_kind == _DatasetKind.Iterable:
                 # See NOTE [ Custom Samplers and IterableDataset ]
                 sampler = _InfiniteConstantSampler()
             else:  # map-style
@@ -205,7 +206,7 @@ class PersistentDataLoader(DataLoader):
             batch_sampler = BatchSampler(sampler, batch_size, drop_last)
 
         self.batch_size = batch_size
-        self.drop_last = drop_last
+        self._drop_last = drop_last
         self.sampler = sampler
         self.batch_sampler = batch_sampler
 
@@ -221,7 +222,7 @@ class PersistentDataLoader(DataLoader):
             self.iterator = _SingleProcessDataLoaderIter(self)
         else:
             self.iterator.set_dataset(
-                self.dataset_kind,
+                self._dataset_kind,
                 dataset,
                 self._index_sampler,
                 collate_fn,
@@ -237,29 +238,29 @@ class PersistentDataLoader(DataLoader):
 class _SingleProcessDataLoaderIter(_BaseDataLoaderIter):
     def __init__(self, loader):
         super(_SingleProcessDataLoaderIter, self).__init__(loader)
-        assert self.timeout == 0
-        assert self.num_workers == 0
+        assert self._timeout == 0
+        assert self._num_workers == 0
 
-        self.dataset_fetcher = _DatasetKind.create_fetcher(
-            self.dataset_kind, self.dataset, self.auto_collation, self.collate_fn, self.drop_last
+        self._dataset_fetcher = _DatasetKind.create_fetcher(
+            self._dataset_kind, self._dataset, self._auto_collation, self._collate_fn, self._drop_last
         )
 
     def __next__(self):
         try:
             index = self._next_index()  # may raise StopIteration
         except StopIteration:
-            self.sampler_iter = iter(self.index_sampler)
+            self._sampler_iter = iter(self._index_sampler)
             raise StopIteration
 
         try:
-            data = self.dataset_fetcher.fetch(index)  # may raise StopIteration
+            data = self._dataset_fetcher.fetch(index)  # may raise StopIteration
         except StopIteration:
-            self.dataset_fetcher = _DatasetKind.create_fetcher(
-                self.dataset_kind, self.dataset, self.auto_collation, self.collate_fn, self.drop_last
+            self._dataset_fetcher = _DatasetKind.create_fetcher(
+                self._dataset_kind, self._dataset, self._auto_collation, self._collate_fn, self._drop_last
             )
             raise StopIteration
 
-        if self.pin_memory:
+        if self._pin_memory:
             data = _utils.pin_memory.pin_memory(data)
         return data
 
@@ -273,35 +274,34 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
     def __init__(self, loader, device=None):
 
         super(_MultiProcessingDataLoaderIter, self).__init__(loader)
-
-        assert self.num_workers > 0
+        assert self._num_workers > 0
 
         if loader.multiprocessing_context is None:
             multiprocessing_context = multiprocessing
         else:
             multiprocessing_context = loader.multiprocessing_context
 
-        self.worker_init_fn = loader.worker_init_fn
-        self.worker_queue_idx_cycle = itertools.cycle(range(self.num_workers))
-        self.worker_result_queue = multiprocessing_context.Queue()
-        self.worker_pids_set = False
-        self.shutdown = False
-        self.send_idx = 0  # idx of the next task to be sent to workers
-        self.rcvd_idx = 0  # idx of the next task to be returned in __next__
-        # information about data not yet yielded, i.e., tasks w/ indices in range [rcvd_idx, send_idx).
+        self._worker_init_fn = loader.worker_init_fn
+        self._worker_queue_idx_cycle = itertools.cycle(range(self._num_workers))
+        self._worker_result_queue = multiprocessing_context.Queue()
+        self._worker_pids_set = False
+        self._shutdown = False
+        self._send_idx = 0  # idx of the next task to be sent to _workers
+        self._rcvd_idx = 0  # idx of the next task to be returned in __next__
+        # information about data not yet yielded, i.e., tasks w/ indices in range [_rcvd_idx, send_idx).
         # map: task idx => - (worker_id,)        if data isn't fetched (outstanding)
         #                  \ (worker_id, data)   if data is already fetched (out-of-order)
-        self.task_info = {}
-        self.tasks_outstanding = 0  # always equal to count(v for v in task_info.values() if len(v) == 1)
-        self.workers_done_event = multiprocessing_context.Event()
+        self._task_info = {}
+        self._tasks_outstanding = 0  # always equal to count(v for v in _task_info.values() if len(v) == 1)
+        self._workers_done_event = multiprocessing_context.Event()
 
-        self.index_queues = []
-        self.workers = []
+        self._index_queues = []
+        self._workers = []
         # A list of booleans representing whether each worker still has work to
         # do, i.e., not having exhausted its iterable dataset object. It always
         # contains all `True`s if not using an iterable-style dataset
         # (i.e., if kind != Iterable).
-        self.workers_status = []
+        self._workers_status = []
 
         # CHANGED PART
         def delayed_worker_loop(dataset_queue, index_queue, data_queue, done_event, seed, worker_id, num_workers):
@@ -323,7 +323,7 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
 
         self.dataset_queue = multiprocessing_context.Queue()
 
-        for i in range(self.num_workers):
+        for i in range(self._num_workers):
             index_queue = multiprocessing_context.Queue()
             # index_queue.cancel_join_thread()
             if loader.dataset is None:
@@ -332,11 +332,11 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
                     args=(
                         self.dataset_queue,
                         index_queue,
-                        self.worker_result_queue,
-                        self.workers_done_event,
-                        self.base_seed + i,
+                        self._worker_result_queue,
+                        self._workers_done_event,
+                        self._base_seed + i,
                         i,
-                        self.num_workers,
+                        self._num_workers,
                     ),
                 )
                 pass
@@ -344,123 +344,123 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
                 w = multiprocessing_context.Process(
                     target=_utils.worker._worker_loop,
                     args=(
-                        self.dataset_kind,
-                        self.dataset,
+                        self._dataset_kind,
+                        self._dataset,
                         index_queue,
-                        self.worker_result_queue,
-                        self.workers_done_event,
-                        self.auto_collation,
-                        self.collate_fn,
-                        self.drop_last,
-                        self.base_seed + i,
-                        self.worker_init_fn,
+                        self._worker_result_queue,
+                        self._workers_done_event,
+                        self._auto_collation,
+                        self._collate_fn,
+                        self._drop_last,
+                        self._base_seed + i,
+                        self._worker_init_fn,
                         i,
-                        self.num_workers,
+                        self._num_workers,
                     ),
                 )
             # END CHANGED PART
             w.daemon = True
             # NB: Process.start() actually take some time as it needs to
             #     start a process and pass the arguments over via a pipe.
-            #     Therefore, we only add a worker to self.workers list after
+            #     Therefore, we only add a worker to self._workers list after
             #     it started, so that we do not call .join() if program dies
             #     before it starts, and __del__ tries to join but will get:
             #     AssertionError: can only join a started process.
             w.start()
-            self.index_queues.append(index_queue)
-            self.workers.append(w)
-            self.workers_status.append(True)
+            self._index_queues.append(index_queue)
+            self._workers.append(w)
+            self._workers_status.append(True)
 
-        if self.pin_memory:
-            self.pin_memory_thread_done_event = threading.Event()
-            self.data_queue = queue.Queue()
+        if self._pin_memory:
+            self._pin_memory_thread_done_event = threading.Event()
+            self._data_queue = queue.Queue()
             # CHANGED PART
             if device is None:
                 device = torch.cuda.current_device()
             # END CHANGED PART
             pin_memory_thread = threading.Thread(
                 target=_utils.pin_memory._pin_memory_loop,
-                args=(self.worker_result_queue, self.data_queue, device, self.pin_memory_thread_done_event),
+                args=(self._worker_result_queue, self._data_queue, device, self._pin_memory_thread_done_event),
             )
             pin_memory_thread.daemon = True
             pin_memory_thread.start()
-            # Similar to workers (see comment above), we only register
-            # pin_memory_thread once it is started.
-            self.pin_memory_thread = pin_memory_thread
+            # Similar to _workers (see comment above), we only register
+            # _pin_memory_thread once it is started.
+            self._pin_memory_thread = pin_memory_thread
         else:
-            self.data_queue = self.worker_result_queue
+            self._data_queue = self._worker_result_queue
 
-        _utils.signal_handling._set_worker_pids(id(self), tuple(w.pid for w in self.workers))
+        _utils.signal_handling._set_worker_pids(id(self), tuple(w.pid for w in self._workers))
         _utils.signal_handling._set_SIGCHLD_handler()
-        self.worker_pids_set = True
+        self._worker_pids_set = True
 
         # CHANGED PART
         if loader.dataset is not None:
             # prime the prefetch loop
-            for _ in range(2 * self.num_workers):
+            for _ in range(2 * self._num_workers):
                 self._try_put_index()
         # END CHANGED PART
 
     # CHANGED PART
     def set_dataset(self, dataset_kind, dataset, index_sampler, collate_fn, drop_last, worker_init_fn, auto_collation):
-        self.index_sampler = index_sampler
-        self.sampler_iter = iter(self.index_sampler)
-        for _ in range(self.num_workers):
+        self._index_sampler = index_sampler
+        self._sampler_iter = iter(self._index_sampler)
+        for _ in range(self._num_workers):
             self.dataset_queue.put((dataset_kind, dataset, auto_collation, collate_fn, drop_last, worker_init_fn))
         # prime the prefetch loop
-        for _ in range(2 * self.num_workers):
+        for _ in range(2 * self._num_workers):
             self._try_put_index()
 
     # END CHANGED PART
 
     def __next__(self):
         while True:
-            # If the worker responsible for `self.rcvd_idx` has already ended
+            # If the worker responsible for `self._rcvd_idx` has already ended
             # and was unable to fulfill this task (due to exhausting an `IterableDataset`),
-            # we try to advance `self.rcvd_idx` to find the next valid index.
+            # we try to advance `self._rcvd_idx` to find the next valid index.
             #
             # This part needs to run in the loop because both the `self._get_data()`
             # call and `_IterableDatasetStopIteration` check below can mark
             # extra worker(s) as dead.
-            while self.rcvd_idx < self.send_idx:
-                info = self.task_info[self.rcvd_idx]
+            while self._rcvd_idx < self._send_idx:
+                info = self._task_info[self._rcvd_idx]
                 worker_id = info[0]
-                if len(info) == 2 or self.workers_status[worker_id]:  # has data or is still active
+                if len(info) == 2 or self._workers_status[worker_id]:  # has data or is still active
                     break
-                del self.task_info[self.rcvd_idx]
-                self.rcvd_idx += 1
+                del self._task_info[self._rcvd_idx]
+                self._rcvd_idx += 1
             else:
-                # no valid `self.rcvd_idx` is found (i.e., didn't break)
+                # no valid `self._rcvd_idx` is found (i.e., didn't break)
                 # CHANGED PART
-                self.sampler_iter = iter(self.index_sampler)
-                for _ in range(2 * self.num_workers):
+                self._sampler_iter = iter(self._index_sampler)
+                for _ in range(2 * self._num_workers):
                     self._try_put_index()
                 # self._shutdown_workers()
                 # Still indicate end of epoch
                 raise StopIteration
                 # END CHANGED PART
 
-            # Now `self.rcvd_idx` is the batch index we want to fetch
+            # Now `self._rcvd_idx` is the batch index we want to fetch
 
             # Check if the next sample has already been generated
-            if len(self.task_info[self.rcvd_idx]) == 2:
-                data = self.task_info.pop(self.rcvd_idx)[1]
+            if len(self._task_info[self._rcvd_idx]) == 2:
+                data = self._task_info.pop(self._rcvd_idx)[1]
                 return self._process_data(data)
 
-            assert not self.shutdown and self.tasks_outstanding > 0
+            assert not self._shutdown and self._tasks_outstanding > 0
             idx, data = self._get_data()
-            self.tasks_outstanding -= 1
+            self._tasks_outstanding -= 1
 
-            if self.dataset_kind == _DatasetKind.Iterable:
+            if self._dataset_kind == _DatasetKind.Iterable:
                 # Check for _IterableDatasetStopIteration
                 if isinstance(data, _utils.worker._IterableDatasetStopIteration):
                     self._shutdown_worker(data.worker_id)
                     self._try_put_index()
                     continue
 
-            if idx != self.rcvd_idx:
+            if idx != self._rcvd_idx:
                 # store out-of-order samples
-                self.task_info[idx] += (data,)
+                self._task_info[idx] += (data,)
             else:
-                del self.task_info[idx]
+                del self._task_info[idx]
                 return self._process_data(data)
