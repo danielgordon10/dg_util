@@ -17,6 +17,7 @@ import numpy as np
 import pytube
 import scipy.linalg
 import scipy.ndimage
+import torch
 import tqdm
 import youtube_dl
 import youtube_dl.extractor.youtube as yt_extractor
@@ -715,35 +716,31 @@ def filter_using_flow(
         return frames, large_masks
 
 
+LAPLACIAN_FILTER = np.array(
+    [[0, 1, 0],
+     [1, -4, 1],
+     [0, 1, 0]]
+)
+LAPLACIAN_FILTER = np.tile(LAPLACIAN_FILTER[np.newaxis, np.newaxis, :, :], (3, 1, 1, 1))
+LAPLACIAN_FILTER = pt_util.from_numpy(LAPLACIAN_FILTER).to(torch.float32)
+
+
 def filter_using_laplacian(frames: np.ndarray, return_inds=False) -> Union[np.ndarray, Tuple[np.ndarray, List[int]]]:
-    assert isinstance(frames, np.ndarray)
-    small_frames = misc_util.resize(frames, (256, 256), height_channel=1, width_channel=2)
-    small_frames = small_frames.transpose(1, 2, 3, 0).reshape(256, 256, -1)
-    small_frames_dim = small_frames.shape[-1]
-
-    if small_frames_dim > (512 // 3) * 3:
-        # Stupid opencv bug
-        laplacian = [
-            np.max(
-                np.abs(
-                    cv2.Laplacian(small_frames[:, :, start : start + (512 // 3) * 3], cv2.CV_16S).reshape(
-                        256, 256, 3, -1
-                    )
-                ),
-                axis=2,
-            )
-            for start in range(0, small_frames_dim, (512 // 3) * 3)
-        ]
-        laplacian = np.concatenate(laplacian, axis=-1)
-    else:
-        laplacian = np.max(np.abs(cv2.Laplacian(small_frames, cv2.CV_16S).reshape(256, 256, 3, -1)), axis=2)
-
-    laplacian = (laplacian > 3).mean(axis=(0, 1))
-    new_frames = np.where(laplacian > 0.4)[0]
-    if return_inds:
-        return frames[new_frames], new_frames
-    else:
-        return frames[new_frames]
+    with torch.no_grad():
+        assert isinstance(frames, np.ndarray) or isinstance(frames, torch.Tensor)
+        if isinstance(frames, np.ndarray):
+            frames_torch = pt_util.from_numpy(frames.transpose(0, 3, 1, 2)).to(torch.float32)
+        else:
+            frames_torch = frames
+        frames_resize = torch.nn.functional.interpolate(frames_torch, (256, 256))
+        laplacian = torch.nn.functional.conv2d(frames_resize, LAPLACIAN_FILTER, groups=3)
+        laplacian, _ = torch.max(torch.abs(laplacian), dim=1)
+        laplacian = (laplacian > 3).to(torch.float32).mean(dim=(1, 2))
+        new_frames = torch.where(laplacian > 0.4)[0]
+        if return_inds:
+            return frames[new_frames], new_frames
+        else:
+            return frames[new_frames]
 
 
 EDGE_ARRAY = np.array([-1, 0, 1], dtype=np.float32)
