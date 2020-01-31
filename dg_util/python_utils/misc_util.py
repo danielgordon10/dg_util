@@ -150,3 +150,32 @@ class timeout(object):
 
     def __exit__(self, type, value, traceback):
         signal.alarm(0)
+
+
+class CircularBuffer(object):
+    def __init__(self, maxlen, numpy=False, dtype=np.int32):
+        self.maxlen = maxlen
+        if numpy:
+            self.data = np.zeros(maxlen, dtype=dtype)
+        else:
+            self.data = [None for _ in range(maxlen)]
+        self.index = 0
+
+    def __len__(self):
+        if self.index < self.maxlen:
+            return self.index
+        return self.maxlen
+
+    def append(self, item):
+        prev_data = None
+        if self.index >= self.maxlen:
+            prev_data = self.data[self.index % self.maxlen]
+        self.data[self.index % self.maxlen] = item
+        self.index += 1
+        return prev_data
+
+    def __getitem__(self, index):
+        return self.data[index % self.maxlen]
+
+    def getlast(self):
+        return self.data[self.index % self.maxlen]

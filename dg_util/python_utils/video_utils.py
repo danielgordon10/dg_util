@@ -716,11 +716,7 @@ def filter_using_flow(
         return frames, large_masks
 
 
-LAPLACIAN_FILTER = np.array(
-    [[0, 1, 0],
-     [1, -4, 1],
-     [0, 1, 0]]
-)
+LAPLACIAN_FILTER = np.array([[0, 1, 0], [1, -4, 1], [0, 1, 0]])
 LAPLACIAN_FILTER = np.tile(LAPLACIAN_FILTER[np.newaxis, np.newaxis, :, :], (3, 1, 1, 1))
 LAPLACIAN_FILTER = pt_util.from_numpy(LAPLACIAN_FILTER).to(torch.float32)
 
