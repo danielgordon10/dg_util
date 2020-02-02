@@ -731,8 +731,9 @@ def filter_using_laplacian(frames: np.ndarray, return_inds=False) -> Union[np.nd
         frames_resize = torch.nn.functional.interpolate(frames_torch, (256, 256))
         laplacian = torch.nn.functional.conv2d(frames_resize, LAPLACIAN_FILTER, groups=3)
         laplacian, _ = torch.max(torch.abs(laplacian), dim=1)
-        laplacian = (laplacian > 3).to(torch.float32).mean(dim=(1, 2))
-        new_frames = torch.where(laplacian > 0.4)[0]
+        laplacian = (laplacian > 3)
+        laplacian_mean = laplacian.to(torch.float32).mean(dim=(1, 2))
+        new_frames = torch.where(laplacian_mean > 0.1)[0]
         if return_inds:
             return frames[new_frames], new_frames
         else:
@@ -1002,12 +1003,20 @@ def example(data_path):
 if __name__ == "__main__":
     # example('.')
     # search_youtube("apple", 100)
-    video_id = "--6bJUbfpnQ"
-    download_video(video_id, "/tmp")
-    # frames = get_frames('/tmp/--7qK_w-g3Y.mp4', sample_rate=5, start_frame=185 * 30, max_frames=int(10 * 30 / 6))
-    frames = get_frames_by_time("/tmp/" + video_id + ".mp4", start_time=10, end_time=15, fps=1)
+    video_id = "-AqUxP32p3w"
+    video = download_video(video_id, "/tmp")
+    #frames = get_frames('/tmp/--7qK_w-g3Y.mp4', sample_rate=5, start_frame=185 * 30, max_frames=int(10 * 30 / 6))
+    #frames = get_frames_by_time("/tmp/" + video_id + ".mp4", start_time=10, end_time=15, fps=1)
+    frames = get_frames(
+        video, 10, remove_video=False, max_frames=-1
+    )
     print("num frames", len(frames))
     import pdb
+
+    frames = np.stack(frames, axis=0)
+
+    frames_torch = pt_util.from_numpy(frames.transpose(0, 3, 1, 2)).to(torch.float32)
+    frames = filter_using_laplacian(frames_torch)
 
     pdb.set_trace()
     for frame in frames:
