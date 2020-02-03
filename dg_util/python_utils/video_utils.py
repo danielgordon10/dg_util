@@ -721,7 +721,9 @@ LAPLACIAN_FILTER = np.tile(LAPLACIAN_FILTER[np.newaxis, np.newaxis, :, :], (3, 1
 LAPLACIAN_FILTER = pt_util.from_numpy(LAPLACIAN_FILTER).to(torch.float32)
 
 
-def filter_using_laplacian(frames: np.ndarray, return_inds=False) -> Union[np.ndarray, Tuple[np.ndarray, List[int]]]:
+def filter_using_laplacian(
+    frames: Union[np.ndarray, torch.Tensor], return_inds=False
+) -> Union[np.ndarray, Tuple[np.ndarray, List[int]]]:
     with torch.no_grad():
         assert isinstance(frames, np.ndarray) or isinstance(frames, torch.Tensor)
         if isinstance(frames, np.ndarray):
@@ -731,13 +733,58 @@ def filter_using_laplacian(frames: np.ndarray, return_inds=False) -> Union[np.nd
         frames_resize = torch.nn.functional.interpolate(frames_torch, (256, 256))
         laplacian = torch.nn.functional.conv2d(frames_resize, LAPLACIAN_FILTER, groups=3)
         laplacian, _ = torch.max(torch.abs(laplacian), dim=1)
-        laplacian = (laplacian > 3)
-        laplacian_mean = laplacian.to(torch.float32).mean(dim=(1, 2))
-        new_frames = torch.where(laplacian_mean > 0.1)[0]
+        laplacian = laplacian > 3
+        if DEBUG:
+            import pdb
+
+            pdb.set_trace()
+            vis_frames = pt_util.to_numpy(laplacian).astype(np.uint8) * 255
+            for frame in vis_frames:
+                cv2.imshow("image", frame)
+                print("score", frame.mean() / 255)
+                cv2.waitKey(0)
+        laplacian = laplacian.to(torch.float32).mean(dim=(1, 2))
+        new_frames = torch.where(laplacian > 0.1)[0]
         if return_inds:
             return frames[new_frames], new_frames
         else:
             return frames[new_frames]
+
+
+def filter_using_laplacian_opencv(
+    frames: np.ndarray, return_inds=False
+) -> Union[np.ndarray, Tuple[np.ndarray, List[int]]]:
+    assert isinstance(frames, np.ndarray)
+    assert len(frames.shape) == 4 and frames.shape[-1] == 3
+    small_frames = frames.transpose(1, 2, 0, 3)
+    small_frames = misc_util.resize(small_frames, (256, 256), height_channel=0, width_channel=1)
+    small_frames = small_frames.reshape(256, 256, -1)
+    small_frames_dim = small_frames.shape[-1]
+
+    if small_frames_dim > (512 // 3) * 3:
+        # Stupid opencv bug
+        laplacian = [
+            np.max(
+                np.abs(
+                    cv2.Laplacian(small_frames[:, :, start : start + (512 // 3) * 3], cv2.CV_16S).reshape(
+                        256, 256, -1, 3
+                    )
+                ),
+                axis=3,
+            )
+            for start in range(0, small_frames_dim, (512 // 3) * 3)
+        ]
+        laplacian = [(lap > 3).mean(axis=(0, 1)) for lap in laplacian]
+        laplacian = np.concatenate(laplacian, axis=-1)
+
+    else:
+        laplacian = np.max(np.abs(cv2.Laplacian(small_frames, cv2.CV_16S).reshape(256, 256, -1, 3)), axis=3)
+        laplacian = (laplacian > 3).mean(axis=(0, 1))
+    new_frames = np.where(laplacian > 0.1)[0]
+    if return_inds:
+        return frames[new_frames], new_frames
+    else:
+        return frames[new_frames]
 
 
 EDGE_ARRAY = np.array([-1, 0, 1], dtype=np.float32)
@@ -1003,14 +1050,15 @@ def example(data_path):
 if __name__ == "__main__":
     # example('.')
     # search_youtube("apple", 100)
-    video_id = "-AqUxP32p3w"
+    video_id = "EzZEt8mPu1I"
     video = download_video(video_id, "/tmp")
-    #frames = get_frames('/tmp/--7qK_w-g3Y.mp4', sample_rate=5, start_frame=185 * 30, max_frames=int(10 * 30 / 6))
-    #frames = get_frames_by_time("/tmp/" + video_id + ".mp4", start_time=10, end_time=15, fps=1)
-    frames = get_frames(
-        video, 10, remove_video=False, max_frames=-1
-    )
+    # frames = get_frames('/tmp/--7qK_w-g3Y.mp4', sample_rate=5, start_frame=185 * 30, max_frames=int(10 * 30 / 6))
+    # frames = get_frames_by_time("/tmp/" + video_id + ".mp4", start_time=10, end_time=15, fps=1)
+    frames = get_frames(video, 10, remove_video=False, max_frames=512)
     print("num frames", len(frames))
+    frames, inds = filter_similar_frames(frames, return_inds=True)
+    print("num frames", len(frames))
+
     import pdb
 
     frames = np.stack(frames, axis=0)

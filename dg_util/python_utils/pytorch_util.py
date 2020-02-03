@@ -13,6 +13,7 @@ import torch.nn.functional as F
 from PIL import Image
 from torch import nn
 from torch.utils.data.dataset import Dataset
+from torchvision import transforms
 
 try:
     import accimage
@@ -467,6 +468,13 @@ def _is_tensor_image(img):
 
 def _is_numpy_image(img):
     return isinstance(img, np.ndarray) and (img.ndim in {2, 3})
+
+
+class ToPILImage(transforms.ToPILImage):
+    def __call__(self, pic):
+        if _is_pil_image(pic):
+            return pic
+        return super(ToPILImage).__call__(pic)
 
 
 class ToTensor(object):
