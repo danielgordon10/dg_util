@@ -10,6 +10,7 @@ from itertools import chain
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torchvision.transforms.functional
 from PIL import Image
 from torch import nn
 from torch.utils.data.dataset import Dataset
@@ -474,7 +475,7 @@ class ToPILImage(transforms.ToPILImage):
     def __call__(self, pic):
         if _is_pil_image(pic):
             return pic
-        return F.to_pil_image(pic, self.mode)
+        return torchvision.transforms.functional.to_pil_image(pic, self.mode)
 
 
 class ToTensor(object):
