@@ -474,7 +474,7 @@ class ToPILImage(transforms.ToPILImage):
     def __call__(self, pic):
         if _is_pil_image(pic):
             return pic
-        return super(ToPILImage, self)(pic)
+        return F.to_pil_image(pic, self.mode)
 
 
 class ToTensor(object):
