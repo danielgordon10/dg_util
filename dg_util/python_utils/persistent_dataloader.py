@@ -410,7 +410,6 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
         # prime the prefetch loop
         for _ in range(2 * self._num_workers):
             self._try_put_index()
-
     # END CHANGED PART
 
     def __next__(self):
