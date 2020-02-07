@@ -1,20 +1,18 @@
-import multiprocessing
 import os
 import tempfile
-import time
+import warnings
 
 import cv2
 import imageio
 import numpy as np
-import tensorflow as tf
-from MulticoreTSNE import MulticoreTSNE as TSNE
 from PIL import Image
-from skimage.draw import circle
-from sklearn.decomposition import PCA
 from torchviz import make_dot
 
 from . import misc_util
 from .tsne import tsne_image
+
+warnings.filterwarnings('ignore',category=FutureWarning)
+import tensorflow as tf
 
 try:
     from StringIO import StringIO  # Python 2.7

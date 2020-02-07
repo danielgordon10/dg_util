@@ -1,6 +1,10 @@
-import numpy as np
-import tensorflow as tf
 import os
+import warnings
+
+import numpy as np
+
+warnings.filterwarnings('ignore',category=FutureWarning)
+import tensorflow as tf
 
 
 def kernel_to_image(data, padsize=1, padval=0):

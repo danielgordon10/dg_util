@@ -13,6 +13,7 @@ def draw_contrast_text_cv2(im, text, position, size=None):
         size = im.shape[1] / 320.0
     im = cv2.putText(im.copy(), text, position, CV_FONT, size, [0, 0, 0], 4)
     im = cv2.putText(im.copy(), text, position, CV_FONT, size, [255, 255, 255], 1)
+    return im
 
 
 def subplot(
