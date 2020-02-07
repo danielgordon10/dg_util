@@ -42,36 +42,6 @@ def cond_scope(scope):
     return empty_scope() if scope is None else tf.variable_scope(scope)
 
 
-def variable_summaries(var, scope=""):
-    # Some useful stats for variables.
-    if len(scope) > 0:
-        scope = "/" + scope
-    with tf.name_scope("summaries" + scope):
-        mean = tf.reduce_mean(tf.abs(var))
-        with tf.device("/cpu:0"):
-            return tf.summary.scalar("mean_abs", mean)
-
-
-def conv_variable_summaries(var, scope=""):
-    # Useful stats for variables and the kernel images.
-    var_summary = variable_summaries(var, scope)
-    if len(scope) > 0:
-        scope = "/" + scope
-    with tf.name_scope("conv_summaries" + scope):
-        var_shape = var.get_shape().as_list()
-        if not (var_shape[0] == 1 and var_shape[1] == 1):
-            if var_shape[2] < 3:
-                var = tf.tile(var, [1, 1, 3, 1])
-                var_shape = var.get_shape().as_list()
-            summary_image = tf.expand_dims(
-                kernel_to_image(tf.slice(var, [0, 0, 0, 0], [var_shape[0], var_shape[1], 3, var_shape[3]])), 0
-            )
-            with tf.device("/cpu:0"):
-                image_summary = tf.summary.image("filters", summary_image)
-                var_summary = tf.summary.merge([var_summary, image_summary])
-    return var_summary
-
-
 def restore(session, save_file, raise_if_not_found=False, copy_mismatched_shapes=False):
     if not os.path.exists(save_file) and raise_if_not_found:
         raise Exception("File %s not found" % save_file)

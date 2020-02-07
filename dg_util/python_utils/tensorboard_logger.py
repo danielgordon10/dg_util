@@ -94,7 +94,7 @@ class Logger(object):
 
     def multi_scalar_log(self, tags, values, step):
         for tag, value in zip(tags, values):
-            summary = tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)])
+            summary = tf.compat.v1.Summary(value=[tf.compat.v1.Summary.Value(tag=tag, simple_value=value)])
             self.writer.add_summary(summary, step, False)
         self.writer.increment()
 
@@ -104,7 +104,7 @@ class Logger(object):
 
     def scalar_summary(self, tag, value, step, increment_counter):
         """Log a scalar variable."""
-        summary = tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)])
+        summary = tf.compat.v1.Summary(value=[tf.compat.v1.Summary.Value(tag=tag, simple_value=value)])
         self.writer.add_summary(summary, step, increment_counter)
 
     def network_graph_summary(self, final_layer, named_parameters, step):
@@ -170,12 +170,14 @@ class Logger(object):
             Image.fromarray(img).save(s, format="png")
 
             # Create an Image object
-            img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(), height=img.shape[0], width=img.shape[1])
+            img_sum = tf.compat.v1.Summary.Image(
+                encoded_image_string=s.getvalue(), height=img.shape[0], width=img.shape[1]
+            )
             # Create a Summary value
-            img_summaries.append(tf.Summary.Value(tag="%s/%d" % (tag, i), image=img_sum))
+            img_summaries.append(tf.compat.v1.Summary.Value(tag="%s/%d" % (tag, i), image=img_sum))
 
         # Create and write Summary
-        summary = tf.Summary(value=img_summaries)
+        summary = tf.compat.v1.Summary(value=img_summaries)
         self.writer.add_summary(summary, step, increment_counter)
 
     def histo_summary(self, tag, values, step, bins=1000, increment_counter=True):
@@ -202,7 +204,7 @@ class Logger(object):
             hist.bucket.append(c)
 
         # Create and write Summary
-        summary = tf.Summary(value=[tf.Summary.Value(tag=tag, histo=hist)])
+        summary = tf.compat.v1.Summary(value=[tf.compat.v1.Summary.Value(tag=tag, histo=hist)])
         self.writer.add_summary(summary, step, increment_counter)
         self.writer.flush()
 
@@ -252,19 +254,21 @@ class Logger(object):
         s = StringIO()
         Image.fromarray(canvas).save(s, format="jpeg")
         # Create an Image object
-        img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(), height=canvas.shape[0], width=canvas.shape[1])
+        img_sum = tf.compat.v1.Summary.Image(
+            encoded_image_string=s.getvalue(), height=canvas.shape[0], width=canvas.shape[1]
+        )
         # Create a Summary value
-        img_summaries.append(tf.Summary.Value(tag=tag, image=img_sum))
+        img_summaries.append(tf.compat.v1.Summary.Value(tag=tag, image=img_sum))
 
         if labels is not None:
             circles = tsne_images[1]
             s = StringIO()
             Image.fromarray(circles).save(s, format="jpeg")
-            img_sum = tf.Summary.Image(
+            img_sum = tf.compat.v1.Summary.Image(
                 encoded_image_string=s.getvalue(), height=circles.shape[0], width=circles.shape[1]
             )
-            img_summaries.append(tf.Summary.Value(tag="%s_labels" % tag, image=img_sum))
+            img_summaries.append(tf.compat.v1.Summary.Value(tag="%s_labels" % tag, image=img_sum))
 
         # Create and write Summary
-        summary = tf.Summary(value=img_summaries)
+        summary = tf.compat.v1.Summary(value=img_summaries)
         self.writer.add_summary(summary, step, increment_counter)

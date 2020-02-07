@@ -8,6 +8,13 @@ FANCY_FONT = None
 FONT_SIZE = 18
 
 
+def draw_contrast_text_cv2(im, text, position, size=None):
+    if size is None:
+        size = im.shape[1] / 320.0
+    im = cv2.putText(im.copy(), text, position, CV_FONT, size[0, 0, 0], 4)
+    im = cv2.putText(im.copy(), text, position, CV_FONT, size, [255, 255, 255], 1)
+
+
 def subplot(
     plots,
     rows,
@@ -107,43 +114,16 @@ def subplot(
                     else:
                         scale_factor = im.shape[1] / 320.0
                         if isinstance(titles[col + cols * row], str):
-                            im = cv2.putText(
-                                im.copy(),
-                                titles[col + cols * row],
-                                (30, int(30 * scale_factor)),
-                                CV_FONT,
-                                0.5 * scale_factor,
-                                [0, 0, 0],
-                                4,
-                            )
-                            im = cv2.putText(
-                                im.copy(),
-                                titles[col + cols * row],
-                                (30, int(30 * scale_factor)),
-                                CV_FONT,
-                                0.5 * scale_factor,
-                                [255, 255, 255],
-                                1,
+                            im = draw_contrast_text_cv2(
+                                im, titles[col + cols * row], (30, int(30 * scale_factor)), 0.5 * scale_factor
                             )
                         else:
                             for tt, title in enumerate(titles[col + cols * row]):
-                                im = cv2.putText(
-                                    im.copy(),
-                                    title,
+                                im = draw_contrast_text_cv2(
+                                    im,
+                                    titles[col + cols * row],
                                     (30, int((tt + 1) * 30 * scale_factor)),
-                                    CV_FONT,
                                     0.5 * scale_factor,
-                                    [0, 0, 0],
-                                    4,
-                                )
-                                im = cv2.putText(
-                                    im.copy(),
-                                    title,
-                                    (30, int((tt + 1) * 30 * scale_factor)),
-                                    CV_FONT,
-                                    0.5 * scale_factor,
-                                    [255, 255, 255],
-                                    1,
                                 )
                 returned_image[
                     border + (output_height + border) * row : (output_height + border) * (row + 1),
