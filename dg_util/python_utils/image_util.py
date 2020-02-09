@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import scipy
+import numbers
 
 
 # @inputImage{ndarray HxWx3} Full input image.
@@ -56,7 +57,13 @@ def get_cropped_input(inputImage, bbox, padScale, outputSize, pad_color=0):
             if len(pad[pad < 0]) > 0:
                 patch = np.zeros((int(outputSize), int(outputSize), 3))
             else:
-                patch = np.lib.pad(patch, ((pad[1], pad[3]), (pad[0], pad[2]), (0, 0)), "constant", constant_values=pad_color)
+                if isinstance(pad_color, numbers.Number):
+                    patch = np.pad(patch, ((pad[1], pad[3]), (pad[0], pad[2]), (0, 0)), "constant", constant_values=pad_color)
+                else:
+                    patch = cv2.copyMakeBorder(
+                        patch, pad[1], pad[3], pad[0], pad[2],
+                        cv2.BORDER_CONSTANT, value=pad_color)
+
     return patch, outputBox
 
 
