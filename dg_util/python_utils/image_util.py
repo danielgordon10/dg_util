@@ -12,7 +12,7 @@ import numbers
 #   warped.
 # @return{tuple(patch, outputBox)} the output patch and bounding box
 #   representing its coordinates.
-def get_cropped_input(inputImage, bbox, padScale, outputSize, pad_color=0):
+def get_cropped_input(inputImage, bbox, padScale, outputSize, interpolation=cv2.INTER_LINEAR, pad_color=0):
     bbox = np.array(bbox)
     width = float(bbox[2] - bbox[0])
     height = float(bbox[3] - bbox[1])
@@ -44,6 +44,7 @@ def get_cropped_input(inputImage, bbox, padScale, outputSize, pad_color=0):
                 max(1, int(np.round(outputSize * boundedBoxWH[0] / boxOnWH[0]))),
                 max(1, int(np.round(outputSize * boundedBoxWH[1] / boxOnWH[1]))),
             ),
+            interpolation=interpolation
         )
         if len(patch.shape) < 3:
             patch = patch[:, :, np.newaxis]
