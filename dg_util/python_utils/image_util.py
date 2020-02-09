@@ -11,7 +11,7 @@ import scipy
 #   warped.
 # @return{tuple(patch, outputBox)} the output patch and bounding box
 #   representing its coordinates.
-def get_cropped_input(inputImage, bbox, padScale, outputSize):
+def get_cropped_input(inputImage, bbox, padScale, outputSize, pad_color=0):
     bbox = np.array(bbox)
     width = float(bbox[2] - bbox[0])
     height = float(bbox[3] - bbox[1])
@@ -56,7 +56,7 @@ def get_cropped_input(inputImage, bbox, padScale, outputSize):
             if len(pad[pad < 0]) > 0:
                 patch = np.zeros((int(outputSize), int(outputSize), 3))
             else:
-                patch = np.lib.pad(patch, ((pad[1], pad[3]), (pad[0], pad[2]), (0, 0)), "constant", constant_values=0)
+                patch = np.lib.pad(patch, ((pad[1], pad[3]), (pad[0], pad[2]), (0, 0)), "constant", constant_values=pad_color)
     return patch, outputBox
 
 

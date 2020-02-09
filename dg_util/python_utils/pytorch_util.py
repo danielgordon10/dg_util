@@ -274,7 +274,7 @@ from_numpy_warn = defaultdict(lambda: False)
 
 def from_numpy(np_array):
     global from_numpy_warn
-    if isinstance(np_array, list):
+    if isinstance(np_array, list) or isinstance(np_array, tuple):
         try:
             np_array = np.stack(np_array, 0)
         except ValueError:

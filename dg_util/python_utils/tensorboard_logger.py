@@ -6,7 +6,6 @@ import cv2
 import imageio
 import numpy as np
 from PIL import Image
-from torchviz import make_dot
 
 from . import misc_util
 from .tsne import tsne_image
@@ -106,6 +105,7 @@ class Logger(object):
         self.writer.add_summary(summary, step, increment_counter)
 
     def network_graph_summary(self, final_layer, named_parameters, step):
+        from torchviz import make_dot
         dot = make_dot(final_layer, named_parameters)
         path = tempfile.mktemp(".gv")
         dot.render(path, format="png")
