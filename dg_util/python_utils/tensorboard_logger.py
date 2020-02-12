@@ -10,7 +10,7 @@ from PIL import Image
 from . import misc_util
 from .tsne import tsne_image
 
-warnings.filterwarnings('ignore',category=FutureWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 import tensorflow as tf
 
 try:
@@ -106,6 +106,7 @@ class Logger(object):
 
     def network_graph_summary(self, final_layer, named_parameters, step):
         from torchviz import make_dot
+
         dot = make_dot(final_layer, named_parameters)
         path = tempfile.mktemp(".gv")
         dot.render(path, format="png")

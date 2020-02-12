@@ -3,7 +3,7 @@ import warnings
 
 import numpy as np
 
-warnings.filterwarnings('ignore',category=FutureWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 import tensorflow as tf
 
 

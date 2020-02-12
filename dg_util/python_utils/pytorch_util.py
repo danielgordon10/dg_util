@@ -479,7 +479,7 @@ class ToPILImage(transforms.ToPILImage):
 
 
 class ToTensor(object):
-    def __init__(self, transpose=True, scale=None):
+    def __init__(self, transpose=True, scale=255):
         self.transpose = transpose
         self.scale = scale
 

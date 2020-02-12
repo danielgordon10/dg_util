@@ -44,7 +44,7 @@ def get_cropped_input(inputImage, bbox, padScale, outputSize, interpolation=cv2.
                 max(1, int(np.round(outputSize * boundedBoxWH[0] / boxOnWH[0]))),
                 max(1, int(np.round(outputSize * boundedBoxWH[1] / boxOnWH[1]))),
             ),
-            interpolation=interpolation
+            interpolation=interpolation,
         )
         if len(patch.shape) < 3:
             patch = patch[:, :, np.newaxis]
@@ -59,11 +59,13 @@ def get_cropped_input(inputImage, bbox, padScale, outputSize, interpolation=cv2.
                 patch = np.zeros((int(outputSize), int(outputSize), 3))
             else:
                 if isinstance(pad_color, numbers.Number):
-                    patch = np.pad(patch, ((pad[1], pad[3]), (pad[0], pad[2]), (0, 0)), "constant", constant_values=pad_color)
+                    patch = np.pad(
+                        patch, ((pad[1], pad[3]), (pad[0], pad[2]), (0, 0)), "constant", constant_values=pad_color
+                    )
                 else:
                     patch = cv2.copyMakeBorder(
-                        patch, pad[1], pad[3], pad[0], pad[2],
-                        cv2.BORDER_CONSTANT, value=pad_color)
+                        patch, pad[1], pad[3], pad[0], pad[2], cv2.BORDER_CONSTANT, value=pad_color
+                    )
 
     return patch, outputBox
 
