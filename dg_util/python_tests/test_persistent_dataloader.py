@@ -44,6 +44,7 @@ def _test_persistent_data_loader(
     worker_init_fn=None,
     device=None,
     delayed_start=False,
+    never_ending=False,
 ):
     if not delayed_start:
         dataset = DummyDataset(data_size)
@@ -59,10 +60,13 @@ def _test_persistent_data_loader(
             drop_last=drop_last,
             worker_init_fn=worker_init_fn,
             device=device,
+            never_ending=never_ending,
         )
 
     else:
-        data_loader = PersistentDataLoader(dataset=None, num_workers=num_workers, pin_memory=True, device=device)
+        data_loader = PersistentDataLoader(
+            dataset=None, num_workers=num_workers, pin_memory=True, device=device, never_ending=never_ending
+        )
 
         dataset = DummyDataset(data_size)
         data_loader.set_dataset(
@@ -76,35 +80,75 @@ def _test_persistent_data_loader(
             worker_init_fn=worker_init_fn,
         )
 
-    counts = 0
-    num_data_points = 0
-    for data in data_loader:
-        counts += 1
-        num_data_points += len(data)
-        if collate_fn is not None:
-            assert isinstance(data, np.ndarray)
-            data = pt_util.from_numpy(data)
+    if never_ending:
+        counts = 0
+        num_data_points = 0
+        data_iter = iter(data_loader)
+        for _ in range(len(data_loader) * 2):
+            data = next(data_iter)
+            counts += 1
+            num_data_points += len(data)
+            if collate_fn is not None:
+                assert isinstance(data, np.ndarray)
+                data = pt_util.from_numpy(data)
 
-        if not drop_last and counts == len(data_loader) and len(dataset) % batch_size != 0:
-            assert len(data) == len(dataset) % batch_size
+            if not drop_last and counts > 0 and counts % len(data_loader) == 0 and len(dataset) % batch_size != 0:
+                assert len(data) == len(dataset) % batch_size
+            else:
+                assert len(data) == batch_size
+            if not shuffle:
+                gt_data = torch.arange(
+                    (counts - 1) % len(data_loader) * batch_size,
+                    ((counts - 1) % len(data_loader) + 1) * batch_size,
+                    dtype=torch.int64,
+                )
+                assert torch.all(data == gt_data[: len(data)])
+
+        if drop_last:
+            assert num_data_points == 2 * (len(dataset) // batch_size * batch_size)
+            assert counts == 2 * int(data_size / batch_size)
         else:
-            assert len(data) == batch_size
-        if not shuffle:
-            gt_data = torch.arange((counts - 1) * batch_size, counts * batch_size, dtype=torch.int64)
-            assert torch.all(data == gt_data[: len(data)])
+            assert num_data_points == 2 * len(dataset)
+            assert counts == 2 * np.ceil(data_size * 1.0 / batch_size)
 
-    if drop_last:
-        assert num_data_points == len(dataset) // batch_size * batch_size
-        assert counts == int(data_size / batch_size)
+        # Make sure it can still run a second time
+        counts = 0
+        data_iter = iter(data_loader)
+        for _ in range(len(data_loader) * 2):
+            data = next(data_iter)
+            counts += 1
+        assert counts > 0
+
     else:
-        assert num_data_points == len(dataset)
-        assert counts == np.ceil(data_size * 1.0 / batch_size)
+        counts = 0
+        num_data_points = 0
+        for data in data_loader:
+            counts += 1
+            num_data_points += len(data)
+            if collate_fn is not None:
+                assert isinstance(data, np.ndarray)
+                data = pt_util.from_numpy(data)
 
-    # Make sure it can still run a second time
-    counts = 0
-    for data in data_loader:
-        counts += 1
-    assert counts > 0
+            if not drop_last and counts == len(data_loader) and len(dataset) % batch_size != 0:
+                assert len(data) == len(dataset) % batch_size
+            else:
+                assert len(data) == batch_size
+            if not shuffle:
+                gt_data = torch.arange((counts - 1) * batch_size, counts * batch_size, dtype=torch.int64)
+                assert torch.all(data == gt_data[: len(data)])
+
+        if drop_last:
+            assert num_data_points == len(dataset) // batch_size * batch_size
+            assert counts == int(data_size / batch_size)
+        else:
+            assert num_data_points == len(dataset)
+            assert counts == np.ceil(data_size * 1.0 / batch_size)
+
+        # Make sure it can still run a second time
+        counts = 0
+        for data in data_loader:
+            counts += 1
+        assert counts > 0
 
 
 def test_persistent_dataloader_normal():
@@ -113,6 +157,14 @@ def test_persistent_dataloader_normal():
 
 def test_persistent_dataloader_single_proc():
     _test_persistent_data_loader(10, 6, 0, shuffle=True, delayed_start=False, drop_last=True)
+
+
+def test_never_ending_normal():
+    _test_persistent_data_loader(10, 6, 4, shuffle=True, delayed_start=False, drop_last=False, never_ending=True)
+
+
+def test_never_ending_single_proc():
+    _test_persistent_data_loader(10, 6, 0, shuffle=True, delayed_start=False, drop_last=True, never_ending=True)
 
 
 def test_persistent_data_loader():
@@ -124,13 +176,15 @@ def test_persistent_data_loader():
                     for shuffle in tf:
                         for wif in [None, DummyDataset.worker_init_fn]:
                             for cof in [None, DummyDataset.collate_fn]:
-                                _test_persistent_data_loader(
-                                    10,
-                                    batch_size,
-                                    num_procs,
-                                    shuffle=shuffle,
-                                    delayed_start=delayed_start,
-                                    drop_last=drop_last,
-                                    worker_init_fn=wif,
-                                    collate_fn=cof,
-                                )
+                                for never_ending in tf:
+                                    _test_persistent_data_loader(
+                                        10,
+                                        batch_size,
+                                        num_procs,
+                                        shuffle=shuffle,
+                                        delayed_start=delayed_start,
+                                        drop_last=drop_last,
+                                        worker_init_fn=wif,
+                                        collate_fn=cof,
+                                        never_ending=never_ending,
+                                    )

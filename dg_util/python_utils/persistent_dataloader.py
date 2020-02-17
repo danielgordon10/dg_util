@@ -35,7 +35,9 @@ class PersistentDataLoader(DataLoader):
         worker_init_fn=None,
         multiprocessing_context=None,
         device=None,
+        never_ending=False,
     ):
+        self.never_ending = never_ending
         if dataset is not None:
             super(PersistentDataLoader, self).__init__(
                 dataset,
@@ -52,9 +54,9 @@ class PersistentDataLoader(DataLoader):
                 multiprocessing_context,
             )
             if self.num_workers == 0:
-                self.iterator = _SingleProcessDataLoaderIter(self)
+                self.iterator = _SingleProcessDataLoaderIter(self, never_ending=self.never_ending)
             else:
-                self.iterator = PersistentDataLoaderIter(self, device)
+                self.iterator = PersistentDataLoaderIter(self, device, never_ending=self.never_ending)
         else:
             # Assert that all non-used args are default
             assert batch_size == 1
@@ -78,7 +80,7 @@ class PersistentDataLoader(DataLoader):
             if self.num_workers == 0:
                 self.iterator = None
             else:
-                self.iterator = PersistentDataLoaderIter(self, device)
+                self.iterator = PersistentDataLoaderIter(self, device, never_ending=self.never_ending)
 
     def setup(self, num_workers=0, pin_memory=False, timeout=0, multiprocessing_context=None):
 
@@ -219,7 +221,7 @@ class PersistentDataLoader(DataLoader):
         self.collate_fn = collate_fn
 
         if self.num_workers == 0:
-            self.iterator = _SingleProcessDataLoaderIter(self)
+            self.iterator = _SingleProcessDataLoaderIter(self, never_ending=self.never_ending)
         else:
             self.iterator.set_dataset(
                 self._dataset_kind,
@@ -236,10 +238,11 @@ class PersistentDataLoader(DataLoader):
 
 
 class _SingleProcessDataLoaderIter(_BaseDataLoaderIter):
-    def __init__(self, loader):
+    def __init__(self, loader, never_ending=False):
         super(_SingleProcessDataLoaderIter, self).__init__(loader)
         assert self._timeout == 0
         assert self._num_workers == 0
+        self.never_ending = never_ending
 
         self._dataset_fetcher = _DatasetKind.create_fetcher(
             self._dataset_kind, self._dataset, self._auto_collation, self._collate_fn, self._drop_last
@@ -250,7 +253,10 @@ class _SingleProcessDataLoaderIter(_BaseDataLoaderIter):
             index = self._next_index()  # may raise StopIteration
         except StopIteration:
             self._sampler_iter = iter(self._index_sampler)
-            raise StopIteration
+            if not self.never_ending:
+                raise StopIteration
+            else:
+                index = self._next_index()  # may raise StopIteration
 
         try:
             data = self._dataset_fetcher.fetch(index)  # may raise StopIteration
@@ -258,7 +264,10 @@ class _SingleProcessDataLoaderIter(_BaseDataLoaderIter):
             self._dataset_fetcher = _DatasetKind.create_fetcher(
                 self._dataset_kind, self._dataset, self._auto_collation, self._collate_fn, self._drop_last
             )
-            raise StopIteration
+            if not self.never_ending:
+                raise StopIteration
+            else:
+                data = self._dataset_fetcher.fetch(index)  # may raise StopIteration
 
         if self._pin_memory:
             data = _utils.pin_memory.pin_memory(data)
@@ -271,10 +280,11 @@ class _SingleProcessDataLoaderIter(_BaseDataLoaderIter):
 
 
 class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
-    def __init__(self, loader, device=None):
+    def __init__(self, loader, device=None, never_ending=False):
 
         super(_MultiProcessingDataLoaderIter, self).__init__(loader)
         assert self._num_workers > 0
+        self.never_ending = never_ending
 
         if loader.multiprocessing_context is None:
             multiprocessing_context = multiprocessing
@@ -437,7 +447,8 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
                     self._try_put_index()
                 # self._shutdown_workers()
                 # Still indicate end of epoch
-                raise StopIteration
+                if not self.never_ending:
+                    raise StopIteration
                 # END CHANGED PART
 
             # Now `self._rcvd_idx` is the batch index we want to fetch
