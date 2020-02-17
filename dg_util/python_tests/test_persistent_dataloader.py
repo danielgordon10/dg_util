@@ -152,24 +152,24 @@ def _test_persistent_data_loader(
 
 
 def test_persistent_dataloader_normal():
-    _test_persistent_data_loader(10, 6, 4, shuffle=True, delayed_start=False, drop_last=True)
+    _test_persistent_data_loader(100, 6, 4, shuffle=True, delayed_start=False, drop_last=True)
 
 
 def test_persistent_dataloader_single_proc():
-    _test_persistent_data_loader(10, 6, 0, shuffle=True, delayed_start=False, drop_last=True)
+    _test_persistent_data_loader(100, 6, 0, shuffle=True, delayed_start=False, drop_last=True)
 
 
 def test_never_ending_normal():
-    _test_persistent_data_loader(10, 6, 4, shuffle=True, delayed_start=False, drop_last=False, never_ending=True)
+    _test_persistent_data_loader(100, 6, 4, shuffle=False, delayed_start=False, drop_last=False, never_ending=True)
 
 
 def test_never_ending_single_proc():
-    _test_persistent_data_loader(10, 6, 0, shuffle=True, delayed_start=False, drop_last=True, never_ending=True)
+    _test_persistent_data_loader(100, 6, 0, shuffle=True, delayed_start=False, drop_last=True, never_ending=True)
 
 
 def test_persistent_data_loader():
     tf = [True, False]
-    for batch_size in range(1, 6):
+    for batch_size in range(1, 7, 10):
         for drop_last in tf:
             for delayed_start in tf:
                 for num_procs in [0, 1, 4]:
@@ -178,7 +178,7 @@ def test_persistent_data_loader():
                             for cof in [None, DummyDataset.collate_fn]:
                                 for never_ending in tf:
                                     _test_persistent_data_loader(
-                                        10,
+                                        30,
                                         batch_size,
                                         num_procs,
                                         shuffle=shuffle,

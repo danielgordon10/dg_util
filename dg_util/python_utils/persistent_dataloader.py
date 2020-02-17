@@ -443,12 +443,14 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
                 # no valid `self._rcvd_idx` is found (i.e., didn't break)
                 # CHANGED PART
                 self._sampler_iter = iter(self._index_sampler)
-                for _ in range(2 * self._num_workers):
-                    self._try_put_index()
                 # self._shutdown_workers()
                 # Still indicate end of epoch
+                print('ended dataset')
                 if not self.never_ending:
+                    for _ in range(2 * self._num_workers):
+                        self._try_put_index()
                     raise StopIteration
+
                 # END CHANGED PART
 
             # Now `self._rcvd_idx` is the batch index we want to fetch
@@ -475,3 +477,28 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
             else:
                 del self._task_info[idx]
                 return self._process_data(data)
+
+    def _try_put_index(self):
+        assert self._tasks_outstanding < 2 * self._num_workers
+        try:
+            index = self._next_index()
+        except StopIteration:
+            # CHANGED PART
+            if self.never_ending:
+                self._sampler_iter = iter(self._index_sampler)
+                index = self._next_index()
+            else:
+                return
+            # END CHANGED PART
+        for _ in range(self._num_workers):  # find the next active worker, if any
+            worker_queue_idx = next(self._worker_queue_idx_cycle)
+            if self._workers_status[worker_queue_idx]:
+                break
+        else:
+            # not found (i.e., didn't break)
+            return
+
+        self._index_queues[worker_queue_idx].put((self._send_idx, index))
+        self._task_info[self._send_idx] = (worker_queue_idx,)
+        self._tasks_outstanding += 1
+        self._send_idx += 1
