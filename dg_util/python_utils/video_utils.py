@@ -601,7 +601,7 @@ def remove_border(images: Union[List, np.ndarray], return_inds=False) -> Union[n
         assert images[0].shape[2] == 3, "Only works on TxHxWxC"
 
 
-    rand_inds = np.random.choice(images.shape[0], min(10, images.shape[0]), replace=False)
+    rand_inds = np.random.choice(len(images), min(10, len(images)), replace=False)
     rand_inds.sort()
     if isndarray:
         rand_images = images[rand_inds]
@@ -641,7 +641,7 @@ def remove_border(images: Union[List, np.ndarray], return_inds=False) -> Union[n
             images = [image[:, edge_min:edge_max] for image in images]
     else:
         edge_inds.append(0)
-        edge_inds.append(images.shape[2])
+        edge_inds.append(rand_images.shape[2])
 
     edge = np.where(horiz_masks)[0]
     if edge.shape[0] >= 2:
@@ -671,7 +671,7 @@ def remove_border(images: Union[List, np.ndarray], return_inds=False) -> Union[n
         edge_inds.append(edge_max)
     else:
         edge_inds.append(0)
-        edge_inds.append(images.shape[1])
+        edge_inds.append(rand_images.shape[1])
 
     if return_inds:
         return images, edge_inds
