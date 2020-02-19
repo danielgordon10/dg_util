@@ -592,7 +592,7 @@ def filter_similar_frames(
 
 def remove_border(images: Union[List, np.ndarray], return_inds=False) -> Union[np.ndarray, Tuple[np.ndarray, List[int]]]:
     isndarray = False
-    if isinstance(images, np.dnarray):
+    if isinstance(images, np.ndarray):
         isndarray = True
         assert len(images.shape) == 4, "Only works on TxHxWxC"
         assert images.shape[3] == 3, "Only works on TxHxWxC"
