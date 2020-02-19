@@ -123,7 +123,7 @@ def get_frames_by_time(video: str, start_time: int, end_time: int = -1, fps: int
         vidcap.release()
     start_frame = int(start_time * vid_framerate)
     end_frame = int(end_time * vid_framerate)
-    sample_rate = int(vid_framerate / fps)
+    sample_rate = max(1, int(vid_framerate / fps))
     return get_frames(video, sample_rate, remove_video=remove_video, start_frame=start_frame, end_frame=end_frame)
 
 
