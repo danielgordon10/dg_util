@@ -590,11 +590,23 @@ def filter_similar_frames(
         return new_frames
 
 
-def remove_border(images: np.ndarray, return_inds=False) -> Union[np.ndarray, Tuple[np.ndarray, List[int]]]:
-    assert len(images.shape) == 4, "Only works on TxHxWxC"
-    assert images.shape[3] == 3, "Only works on TxHxWxC"
+def remove_border(images: Union[List, np.ndarray], return_inds=False) -> Union[np.ndarray, Tuple[np.ndarray, List[int]]]:
+    isndarray = False
+    if isinstance(images, np.dnarray):
+        isndarray = True
+        assert len(images.shape) == 4, "Only works on TxHxWxC"
+        assert images.shape[3] == 3, "Only works on TxHxWxC"
+    else:
+        assert len(images) > 0, "Only works on TxHxWxC"
+        assert images[0].shape[2] == 3, "Only works on TxHxWxC"
+
+
     rand_inds = np.random.choice(images.shape[0], min(10, images.shape[0]), replace=False)
-    rand_images = images[rand_inds]
+    rand_inds.sort()
+    if isndarray:
+        rand_images = images[rand_inds]
+    else:
+        rand_images = np.asarray([images[ii] for ii in rand_inds])
     masks = np.all(rand_images < 10, axis=(0, 3))
     # masks = np.all(rand_images == 0, axis=(0, 3))
     vert_masks = np.all(masks, axis=0)
@@ -623,7 +635,10 @@ def remove_border(images: np.ndarray, return_inds=False) -> Union[np.ndarray, Tu
 
         edge_inds.append(edge_min)
         edge_inds.append(edge_max)
-        images = images[:, :, edge_min:edge_max]
+        if isndarray:
+            images = images[:, :, edge_min:edge_max]
+        else:
+            images = [image[:, edge_min:edge_max] for image in images]
     else:
         edge_inds.append(0)
         edge_inds.append(images.shape[2])
@@ -648,7 +663,10 @@ def remove_border(images: np.ndarray, return_inds=False) -> Union[np.ndarray, Tu
             else:
                 edge_max = edge[0]
 
-        images = images[:, edge_min:edge_max]
+        if isndarray:
+            images = images[:, edge_min:edge_max]
+        else:
+            images = [image[edge_min:edge_max] for image in images]
         edge_inds.append(edge_min)
         edge_inds.append(edge_max)
     else:
