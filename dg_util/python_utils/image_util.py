@@ -36,7 +36,7 @@ def get_cropped_input(inputImage, bbox, padScale, outputSize, interpolation=cv2.
     boundedBoxWH = np.array([boundedBox[2] - boundedBox[0], boundedBox[3] - boundedBox[1]])
 
     if imagePatch.shape[0] == 0 or imagePatch.shape[1] == 0:
-        patch = np.zeros((int(outputSize), int(outputSize), 3))
+        patch = np.zeros((int(outputSize), int(outputSize), 3), dtype=imagePatch.dtype)
     else:
         patch = cv2.resize(
             imagePatch,
