@@ -43,10 +43,10 @@ def tsne_image(
     features = np.asarray(features, dtype=np.float32)
     images = np.asarray(images)
     assert len(features.shape) == 2
-    _, uniques = misc_util.unique_rows(images.reshape(images.shape[0], -1), return_inverse=True)
-    uniques.sort()
-    images = images[uniques]
-    features = features[uniques]
+    #_, uniques = misc_util.unique_rows(images.reshape(images.shape[0], -1), return_inverse=True)
+    #uniques.sort()
+    #images = images[uniques]
+    #features = features[uniques]
     n, h, w, c = images.shape
     images = misc_util.min_resize(images.transpose(1, 2, 0, 3).reshape(h, w, n * c), img_res)
     images = images.reshape(images.shape[0], images.shape[1], n, c).transpose(2, 0, 1, 3)
