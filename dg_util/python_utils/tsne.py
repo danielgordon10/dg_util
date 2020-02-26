@@ -93,7 +93,7 @@ def tsne_image(
     xx = np.floor((xx - x_min) / (x_max - x_min) * res_x).astype(np.int64)
     yy = np.floor((yy - y_min) / (y_max - y_min) * res_y).astype(np.int64)
     im_ind = 0
-    for x_idx, y_idx, image in zip(xx, yy, images):
+    for ii, x_idx, y_idx, image in zip(range(len(xx)), xx, yy, images):
         w, h = image.shape[:2]
         if labels is not None:
             center = (int(y_idx + h / 2.0), int(x_idx + w / 2.0))
