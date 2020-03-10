@@ -10,3 +10,4 @@ tqdm
 youtube_dl
 pytube
 tensorflow>=1.5
+imagesize

@@ -1,4 +1,6 @@
 import cv2
+import imagesize
+from PIL import Image
 import numpy as np
 import scipy
 import numbers
@@ -71,58 +73,5 @@ def get_cropped_input(inputImage, bbox, padScale, outputSize, interpolation=cv2.
 
 
 def get_image_size(fname):
-    import struct, imghdr, re
-
-    """Determine the image type of fhandle and return its size.
-    from draco"""
-    # Only a loop so we can break. Should never run more than once.
-    while True:
-        with open(fname, "rb") as fhandle:
-            head = fhandle.read(32)
-            if len(head) != 32:
-                break
-            if imghdr.what(fname) == "png":
-                check = struct.unpack(">i", head[4:8])[0]
-                if check != 0x0D0A1A0A:
-                    break
-                width, height = struct.unpack(">ii", head[16:24])
-            elif imghdr.what(fname) == "gif":
-                width, height = struct.unpack("<HH", head[6:10])
-            elif imghdr.what(fname) == "jpeg":
-                try:
-                    fhandle.seek(0)  # Read 0xff next
-                    size = 2
-                    ftype = 0
-                    while not 0xC0 <= ftype <= 0xCF:
-                        fhandle.seek(size, 1)
-                        byte = fhandle.read(1)
-                        while ord(byte) == 0xFF:
-                            byte = fhandle.read(1)
-                        ftype = ord(byte)
-                        size = struct.unpack(">H", fhandle.read(2))[0] - 2
-                    # We are at a SOFn block
-                    fhandle.seek(1, 1)  # Skip `precision' byte.
-                    height, width = struct.unpack(">HH", fhandle.read(4))
-                except Exception:  # IGNORE:W0703
-                    break
-            elif imghdr.what(fname) == "pgm":
-                header, width, height, maxval = re.search(
-                    b"(^P5\s(?:\s*#.*[\r\n])*"
-                    b"(\d+)\s(?:\s*#.*[\r\n])*"
-                    b"(\d+)\s(?:\s*#.*[\r\n])*"
-                    b"(\d+)\s(?:\s*#.*[\r\n]\s)*)",
-                    head,
-                ).groups()
-                width = int(width)
-                height = int(height)
-            elif imghdr.what(fname) == "bmp":
-                _, width, height, depth = re.search(b"((\d+)\sx\s" b"(\d+)\sx\s" b"(\d+))", str).groups()
-                width = int(width)
-                height = int(height)
-            else:
-                break
-            return width, height
-    import cv2
-
-    imShape = cv2.imread(fname).shape
-    return imShape[1], imShape[0]
+    width, height = imagesize.get(fname)
+    return image.size

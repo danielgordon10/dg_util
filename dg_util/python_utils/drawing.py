@@ -27,6 +27,7 @@ def subplot(
     normalize=None,
     order=None,
     fancy_text=False,
+    border_color=(191, 191, 191),
 ):
     """
     Given a list of images, returns a single image with the sub-images tiled in a subplot.
@@ -59,7 +60,7 @@ def subplot(
 
     returned_image = np.full(
         ((output_height + border) * rows + 2 * border, (output_width + border) * cols + 2 * border, 3),
-        191,
+        border_color,
         dtype=np.uint8,
     )
     if fancy_text:
