@@ -293,7 +293,7 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
 
         self._worker_init_fn = loader.worker_init_fn
         self._worker_queue_idx_cycle = itertools.cycle(range(self._num_workers))
-        self._worker_result_queue = multiprocessing_context.Queue()
+        self._worker_result_queue = multiprocessing_context.Queue(2 * self._num_workers)
         self._worker_pids_set = False
         self._shutdown = False
         self._send_idx = 0  # idx of the next task to be sent to _workers
@@ -334,7 +334,7 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
         self.dataset_queue = multiprocessing_context.Queue()
 
         for i in range(self._num_workers):
-            index_queue = multiprocessing_context.Queue()
+            index_queue = multiprocessing_context.Queue(2)
             # index_queue.cancel_join_thread()
             if loader.dataset is None:
                 w = multiprocessing_context.Process(
@@ -383,7 +383,7 @@ class PersistentDataLoaderIter(_MultiProcessingDataLoaderIter):
 
         if self._pin_memory:
             self._pin_memory_thread_done_event = threading.Event()
-            self._data_queue = queue.Queue()
+            self._data_queue = queue.Queue(2 * self._num_workers)
             # CHANGED PART
             if device is None:
                 device = torch.cuda.current_device()
