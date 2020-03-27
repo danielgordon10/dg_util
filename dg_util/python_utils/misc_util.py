@@ -116,6 +116,27 @@ def min_side_resize_and_pad(im, output_height, output_width, interpolation=cv2.I
     return im
 
 
+def center_crop(im, aspect_ratio=1):
+    # Aspect ratio is width / height
+    if im.shape[0] > im.shape[1]:
+        width = im.shape[1]
+        height = int(width * 1.0 / aspect_ratio)
+        if height > im.shape[0]:
+            height = im.shape[0]
+            width = int(height * aspect_ratio)
+    else:
+        height = im.shape[0]
+        width = int(height * aspect_ratio)
+        if width > im.shape[1]:
+            width = im.shape[1]
+            height = int(width * 1.0 / aspect_ratio)
+
+    start_h = int(im.shape[0] / 2 - height / 2)
+    start_w = int(im.shape[1] / 2 - width / 2)
+    im_slice = im[start_h: start_h + height, start_w: start_w + width]
+    return im_slice
+
+
 def unique_rows(arr, return_index=False, return_inverse=False):
     arr = arr.copy()
     b = arr.view(np.dtype((np.void, arr.dtype.itemsize * arr.shape[1])))
