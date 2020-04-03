@@ -1,11 +1,14 @@
+import copy
 import glob
 import itertools
 import numbers
 import os
 import re
 import traceback
+from collections import Iterable
 from collections import defaultdict, OrderedDict
 from itertools import chain
+from typing import Optional, Union
 
 import numpy as np
 import torch
@@ -21,10 +24,11 @@ try:
 except ImportError:
     accimage = None
 
+DETECT_ANOMALY_COUNT = 0
+SURFNORM_KERNEL = None
+
 
 ########## Restore/Save Model Stuff ##########
-
-
 def restore(net, save_file, saved_variable_prefix="", new_variable_prefix="", skip_filter=None):
     if isinstance(saved_variable_prefix, str):
         saved_variable_prefix = [saved_variable_prefix]
@@ -192,9 +196,7 @@ def rename_many_networks_variables(change_dict, basedir, new_basedir="converted"
                 rename_network_variables(change_dict, filename, new_basedir)
 
 
-########## Remove/Split dim ##########
-
-
+########## Shape stuff ##########
 def remove_dim_get_shape(curr_shape, dim):
     assert dim > 0, "Axis must be greater than 0"
     curr_shape = list(curr_shape)
@@ -239,9 +241,34 @@ def split_dim(input_tensor, dim, d1, d2):
         return input_tensor.reshape(new_shape)
 
 
+def expand_dim(tensor: Union[torch.Tensor, np.ndarray], dim: int, desired_dim_len: int) -> torch.Tensor:
+    sz = list(tensor.shape)
+    sz[dim] = desired_dim_len
+    return tensor.expand(tuple(sz))
+
+
+def expand_new_dim(tensor: Union[torch.Tensor, np.ndarray], new_dim: int, desired_dim_len: int) -> torch.Tensor:
+    sz = list(tensor.shape)
+    curr_shape = list(tensor.shape)
+    curr_shape.insert(new_dim, 1)
+    if isinstance(tensor, torch.Tensor):
+        tensor = tensor.view(curr_shape)
+    else:
+        tensor = tensor.reshape(curr_shape)
+    sz.insert(new_dim, desired_dim_len)
+    return tensor.expand(tuple(sz))
+
+
+def repeat_new_dim(tensor: torch.Tensor, new_dim: int, desired_dim_len: int) -> torch.Tensor:
+    sz = [1 for _ in range(len(tensor.size()))]
+    curr_shape = list(tensor.size())
+    curr_shape.insert(new_dim, 1)
+    tensor = tensor.view(curr_shape)
+    sz.insert(new_dim, desired_dim_len)
+    return tensor.repeat(tuple(sz))
+
+
 ########## From/To Numpy ##########
-
-
 def to_numpy(array):
     if isinstance(array, torch.Tensor):
         return array.detach().cpu().numpy()
@@ -330,8 +357,6 @@ def stack_dicts_in_list(dicts, axis=0, concat=False):
 
 
 ############### Layers ###############
-
-
 class Identity(nn.Module):
     def forward(self, data):
         return data
@@ -360,22 +385,82 @@ class Flatten(nn.Module):
         return x.view(x.size(0), -1)
 
 
-class DummyScope(nn.Module):
-    """Used for keeping scope the same between pretrain and interactive training."""
-
-    def __init__(self, module, scope_list):
-        super(DummyScope, self).__init__()
-        assert isinstance(scope_list, list) and len(scope_list) > 0
-        self.scope_list = scope_list
-        if len(scope_list) > 1:
-            setattr(self, scope_list[0], DummyScope(module, scope_list[1:]))
-        elif len(scope_list) == 1:
-            setattr(self, scope_list[0], module)
-
-    def forward(self, *input, **kwargs):
-        return getattr(self, self.scope_list[0])(*input, **kwargs)
+def upshuffle(in_planes, out_planes, upscale_factor, kernel_size=3, stride=1, padding=1, nonlinearity=nn.ReLU):
+    layers = [
+        nn.Conv2d(in_planes, out_planes * upscale_factor ** 2, kernel_size=kernel_size, stride=stride, padding=padding),
+        nn.PixelShuffle(upscale_factor),
+    ]
+    if nonlinearity is not None:
+        layers.append(nonlinearity())
+    return nn.Sequential(*layers)
 
 
+def conv_block(in_planes, out_planes, kernel_size=3, padding=None, stride=1, norm_layer=nn.BatchNorm2d, nonlinearity=nn.ReLU):
+    if padding is None:
+        padding = kernel_size // 2
+    layers = [nn.Conv2d(in_planes, out_planes, kernel_size, stride, padding=padding)]
+    if norm_layer is not None:
+        layers.append(norm_layer(out_planes))
+    if nonlinearity is not None:
+        layers.append(nonlinearity())
+    return nn.Sequential(*layers)
+
+
+def linear_block(in_features, out_features, norm_layer=nn.BatchNorm2d, nonlinearity=nn.ReLU, dropout=0):
+    layers = [nn.Linear(in_features, out_features)]
+    if norm_layer is not None:
+        layers.append(norm_layer(out_features))
+    if nonlinearity is not None:
+        layers.append(nonlinearity())
+    if dropout > 0:
+        layers.append(nn.Dropout(dropout))
+    return nn.Sequential(*layers)
+
+
+def upsample_add(x, y):
+    if x.shape[2:] != y.shape[2:]:
+        _, _, height, width = y.size()
+        return F.interpolate(x, size=(height, width), mode="bilinear", align_corners=False) + y
+    else:
+        return x + y
+
+
+class Interpolate(nn.Module):
+    def __init__(self, size=None, scale_factor=None, mode="nearest", align_corners=None):
+        super(Interpolate, self).__init__()
+        self.size = size
+        self.scale_factor = scale_factor
+        self.mode = mode
+        self.align_corners = align_corners
+
+    def forward(self, x):
+        return F.interpolate(
+            x, size=self.size, scale_factor=self.scale_factor, mode=self.mode, align_corners=self.align_corners
+        )
+
+
+class AttentionPool2D(nn.Module):
+    def __init__(self, feature_size, keepdim=True, return_masks=True):
+        super(AttentionPool2D, self).__init__()
+        self.attention = nn.Conv2d(feature_size, 1, 1)
+        self.keepdim = keepdim
+        self.return_masks = return_masks
+
+    def forward(self, x: torch.Tensor):
+        x_weight = self.attention(x)
+        x_weight_shape = x_weight.shape
+        x_weight = remove_dim(x_weight, (2, 3))
+        x_weight = F.softmax(x_weight, dim=-1)
+        x_weight = x_weight.view(x_weight_shape)
+        x = x * x_weight
+        x = x.sum((2, 3), keepdim=self.keepdim)
+        if self.return_masks:
+            return x, x_weight
+        else:
+            return x
+
+
+############# Network Stuff #############
 class BaseModel(nn.Module):
     def __init__(self):
         super(BaseModel, self).__init__()
@@ -405,9 +490,90 @@ class BaseModel(nn.Module):
         return iteration
 
 
+def reset_module(module):
+    module_list = [sub_mod for sub_mod in module.modules()]
+    ss = 0
+    while ss < len(module_list):
+        sub_mod = module_list[ss]
+        if hasattr(sub_mod, "reset_parameters"):
+            sub_mod.reset_parameters()
+            ss += len([_ for _ in sub_mod.modules()])
+        else:
+            ss += 1
+
+
+def replace_all_layer_with_new_type(model, existing_layer_type, out_layer_fn):
+    modules = model._modules
+    for m in modules.keys():
+        module = modules[m]
+        should_replace = False
+        if isinstance(existing_layer_type, Iterable):
+            for etype in existing_layer_type:
+                if isinstance(module, etype):
+                    should_replace = True
+                    break
+        elif isinstance(module, existing_layer_type):
+            should_replace = True
+        if should_replace:
+            out_layer = out_layer_fn(module)
+            print("Old ", m, module, "->", out_layer)
+            model._modules[m] = out_layer
+        elif isinstance(module, nn.Module):
+            model._modules[m] = replace_all_layer_with_new_type(module, existing_layer_type, out_layer_fn)
+    return model
+
+
+def get_first_conv_layer(module: nn.Module) -> Optional[nn.Module]:
+    if isinstance(module, nn.Conv2d):
+        return module
+    conv_layer = None
+
+    for sub_module in module.children():
+        if isinstance(sub_module, nn.Conv2d):
+            conv_layer = sub_module
+            break
+        else:
+            deeper = get_first_conv_layer(sub_module)
+            if deeper is not None:
+                conv_layer = deeper
+                break
+    return conv_layer
+
+
+def get_last_conv_layer(module: nn.Module) -> Optional[nn.Module]:
+    if isinstance(module, nn.Conv2d):
+        return module
+    conv_layer = None
+    for sub_module in module.children():
+        if isinstance(sub_module, nn.Conv2d):
+            conv_layer = sub_module
+        else:
+            deeper = get_last_conv_layer(sub_module)
+            if deeper is not None:
+                conv_layer = deeper
+    return conv_layer
+
+
+def get_stride(module: nn.Module) -> Optional[nn.Module]:
+    stride = 1
+    if hasattr(module, "stride"):
+        if isinstance(module.stride, int):
+            stride *= module.stride
+        else:
+            stride *= module.stride[0]
+    for sub_module in module.children():
+        if hasattr(sub_module, "stride"):
+            if isinstance(sub_module.stride, int):
+                stride *= sub_module.stride
+            else:
+                stride *= sub_module.stride[0]
+        else:
+            deeper = get_stride(sub_module)
+            stride *= deeper
+    return stride
+
+
 ########## Data/Preprocessing Utils ##########
-
-
 def fix_broadcast(input1, input2):
     original_shape1 = input1.shape
     original_shape2 = input2.shape
@@ -561,9 +727,61 @@ class IndexWrapperDataset(Dataset):
         return result, item
 
 
+########## Loss Stuff ##########
+def weighted_loss(loss_function_output, weights, reduction="mean"):
+    if isinstance(weights, numbers.Number):
+        if reduction == "mean":
+            return weights * torch.mean(loss_function_output)
+        elif reduction == "sum":
+            return weights * torch.sum(loss_function_output)
+        else:
+            return weights * loss_function_output
+
+    elif weights.dtype == torch.uint8 and reduction != "none":
+        if reduction == "mean":
+            return torch.mean(torch.masked_select(loss_function_output, weights))
+        else:
+            return torch.sum(torch.masked_select(loss_function_output, weights))
+    else:
+        if reduction == "mean":
+            return torch.mean(loss_function_output * weights)
+        elif reduction == "sum":
+            return torch.sum(loss_function_output * weights)
+        else:
+            return loss_function_output * weights
+
+
+def multi_class_cross_entropy_loss(predictions, labels, reduction="mean", dim=-1):
+    # Predictions should be logits, labels should be probabilities.
+    loss = labels * F.log_softmax(predictions, dim=dim)
+    if reduction == "none":
+        return -1 * loss
+    elif reduction == "mean":
+        return -1 * torch.mean(loss) * predictions.shape[dim]  # mean across all dimensions except softmax one.
+    elif reduction == "sum":
+        return -1 * torch.sum(loss)
+    else:
+        raise NotImplementedError("Not known reduction type")
+
+
+def triplet_ratio_loss(dist_pos: torch.Tensor, dist_neg: torch.Tensor, margin: float = 1e-5) -> torch.Tensor:
+    ratio = dist_neg / torch.clamp_min(dist_pos + margin, 1e-10)
+    ratio = torch.clamp_min(1 - ratio, 0)
+    return ratio
+
+
+def triplet_ratio_loss_exp(dist_pos: torch.Tensor, dist_neg: torch.Tensor, temperature: float = 0.03) -> torch.Tensor:
+    # https://www.researchgate.net/profile/Krystian_Mikolajczyk/publication/317192886_Learning_local_feature_descriptors_with_triplets_and_shallow_convolutional_neural_networks/links/5a038dad0f7e9beb1770c3c2/Learning-local-feature-descriptors-with-triplets-and-shallow-convolutional-neural-networks.pdf
+    dist_pos = dist_pos / temperature
+    dist_neg = dist_neg / temperature
+    pos_exp = torch.exp(dist_pos)
+    neg_exp = torch.exp(dist_neg)
+    denom = pos_exp + neg_exp
+    loss = torch.pow((pos_exp / denom), 2) + torch.pow((1 - neg_exp / denom), 2)
+    return loss
+
+
 ########## Other ##########
-
-
 class DataParallelFix(nn.DataParallel):
     """
     Temporary workaround for https://github.com/pytorch/pytorch/issues/15716.
@@ -597,6 +815,21 @@ class DataParallelFix(nn.DataParallel):
         return self.gather(self._outputs, self.output_device)
 
 
+class DummyScope(nn.Module):
+    """Used for keeping scope the same between pretrain and interactive training."""
+
+    def __init__(self, module, scope_list):
+        super(DummyScope, self).__init__()
+        assert isinstance(scope_list, list) and len(scope_list) > 0
+        self.scope_list = scope_list
+        if len(scope_list) > 1:
+            setattr(self, scope_list[0], DummyScope(module, scope_list[1:]))
+        elif len(scope_list) == 1:
+            setattr(self, scope_list[0], module)
+
+    def forward(self, *input, **kwargs):
+        return getattr(self, self.scope_list[0])(*input, **kwargs)
+
 def get_data_parallel(module, device_ids):
     if isinstance(device_ids, str):
         device_ids = [int(device_id.strip()) for device_id in device_ids.split(",")]
@@ -613,29 +846,6 @@ def detatch_recursive(h):
         return h.detach()
     else:
         return tuple(detatch_recursive(v) for v in h)
-
-
-def weighted_loss(loss_function_output, weights, reduction="mean"):
-    if isinstance(weights, numbers.Number):
-        if reduction == "mean":
-            return weights * torch.mean(loss_function_output)
-        elif reduction == "sum":
-            return weights * torch.sum(loss_function_output)
-        else:
-            return weights * loss_function_output
-
-    elif weights.dtype == torch.uint8 and reduction != "none":
-        if reduction == "mean":
-            return torch.mean(torch.masked_select(loss_function_output, weights))
-        else:
-            return torch.sum(torch.masked_select(loss_function_output, weights))
-    else:
-        if reduction == "mean":
-            return torch.mean(loss_function_output * weights)
-        elif reduction == "sum":
-            return torch.sum(loss_function_output * weights)
-        else:
-            return loss_function_output * weights
 
 
 def get_one_hot(data, num_inds, dtype=torch.float32):
@@ -659,13 +869,10 @@ def get_one_hot_numpy(data, num_inds, dtype=np.float32):
     return placeholder
 
 
-surfnorm_kernel = None
-
-
 def depth_to_surface_normals(depth, surfnorm_scalar=256):
-    global surfnorm_kernel
-    if surfnorm_kernel is None:
-        surfnorm_kernel = torch.from_numpy(
+    global SURFNORM_KERNEL
+    if SURFNORM_KERNEL is None:
+        SURFNORM_KERNEL = torch.from_numpy(
             np.array(
                 [
                     [[1, 2, 1], [0, 0, 0], [-1, -2, -1]],
@@ -675,32 +882,43 @@ def depth_to_surface_normals(depth, surfnorm_scalar=256):
             )
         )[:, np.newaxis, ...].to(dtype=torch.float32, device=depth.device)
     with torch.no_grad():
-        surface_normals = F.conv2d(depth, surfnorm_scalar * surfnorm_kernel, padding=1)
+        surface_normals = F.conv2d(depth, surfnorm_scalar * SURFNORM_KERNEL, padding=1)
         surface_normals[:, 2, ...] = 1
         surface_normals = surface_normals / surface_normals.norm(dim=1, keepdim=True)
     return surface_normals
 
 
-def multi_class_cross_entropy_loss(predictions, labels, reduction="mean", dim=-1):
-    # Predictions should be logits, labels should be probabilities.
-    loss = labels * F.log_softmax(predictions, dim=dim)
-    if reduction == "none":
-        return -1 * loss
-    elif reduction == "mean":
-        return -1 * torch.mean(loss) * predictions.shape[dim]  # mean across all dimensions except softmax one.
-    elif reduction == "sum":
-        return -1 * torch.sum(loss)
-    else:
-        raise NotImplementedError("Not known reduction type")
 
 
-def reset_module(module):
-    module_list = [sub_mod for sub_mod in module.modules()]
-    ss = 0
-    while ss < len(module_list):
-        sub_mod = module_list[ss]
-        if hasattr(sub_mod, "reset_parameters"):
-            sub_mod.reset_parameters()
-            ss += len([_ for _ in sub_mod.modules()])
-        else:
-            ss += 1
+
+
+
+
+
+
+
+
+def clones(module, N):
+    """Produce N identical layers."""
+    return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
+
+
+class detect_anomaly(object):
+    def __init__(self, frequency):
+        self.prev = torch.is_anomaly_enabled()
+        self.frequency = frequency
+
+    def __enter__(self):
+        global DETECT_ANOMALY_COUNT
+        if DETECT_ANOMALY_COUNT % self.frequency == 0:
+            torch.set_anomaly_enabled(True)
+        DETECT_ANOMALY_COUNT += 1
+
+    def __exit__(self, *args):
+        torch.set_anomaly_enabled(self.prev)
+        return False
+
+
+
+
+
