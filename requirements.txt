@@ -8,5 +8,5 @@ torch
 torchvision
 tqdm
 git+https://github.com/ytdl-org/youtube-dl.git
-tensorflow==1.15.2
+tensorflow==2.11.1
 imagesize
