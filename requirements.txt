@@ -1,5 +1,5 @@
 numpy>=1.16.1
-opencv-python==3.2.0.8
+opencv-python==4.2.0.32
 scikit-image
 scikit-learn
 Pillow>=4.0.0
