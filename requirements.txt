@@ -8,5 +8,5 @@ torch
 torchvision
 tqdm
 youtube_dl
-tensorflow==2.11.1
+tensorflow==1.15.2
 imagesize
